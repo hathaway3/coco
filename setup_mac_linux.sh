@@ -53,4 +53,7 @@ cargo install elf2uf2-rs --no-default-features --features "libusb" --locked || c
 # Actually, `cargo install elf2uf2-rs` usually works if libudev is there.
 # Let's keep it simple.
 
-echo "Setup complete! You can now run ./build_firmware.sh"
+echo "Setup complete!"
+echo "You can now run ./build_firmware.sh"
+echo "Note: If you run cargo commands manually, you may need to restart your shell"
+echo "or run: source \$HOME/.cargo/env"
