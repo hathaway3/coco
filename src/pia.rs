@@ -265,52 +265,69 @@ impl Pia0 {
             pia1,
         }
     }
-    /*
-    // update is called periodically to allow for updates of keyboard and joystick state
-    pub fn update(&mut self, w: &minifb::Window) {
-        self.update_keyboard(w);
-        self.update_joystick(w);
-    }
-    fn update_joystick(&mut self, w: &minifb::Window) {
-        if let Some(mouse) = w.get_mouse_pos(MouseMode::Clamp) {
-            // translate mouse position into 6-bit integers
-            self.joy_x = ((255.0 * (mouse.0 / vdg::SCREEN_DIM_X as f32)).round() as u8) >> 2;
-            self.joy_y = ((255.0 * (mouse.1 / vdg::SCREEN_DIM_Y as f32)).round() as u8) >> 2;
-            self.joy_sw_1 = w.get_mouse_down(MouseButton::Left);
-            self.joy_sw_2 = w.get_mouse_down(MouseButton::Right);
+    // Helper to map ASCII to CoCo matrix (Row, Col)
+    fn ascii_to_matrix(c: u8) -> Option<(usize, usize)> {
+        match c.to_ascii_uppercase() {
+            b'@' => Some((0, 0)),
+            b'A' => Some((0, 1)),
+            b'B' => Some((0, 2)),
+            b'C' => Some((0, 3)),
+            b'D' => Some((0, 4)),
+            b'E' => Some((0, 5)),
+            b'F' => Some((0, 6)),
+            b'G' => Some((0, 7)),
+            b'H' => Some((1, 0)),
+            b'I' => Some((1, 1)),
+            b'J' => Some((1, 2)),
+            b'K' => Some((1, 3)),
+            b'L' => Some((1, 4)),
+            b'M' => Some((1, 5)),
+            b'N' => Some((1, 6)),
+            b'O' => Some((1, 7)),
+            b'P' => Some((2, 0)),
+            b'Q' => Some((2, 1)),
+            b'R' => Some((2, 2)),
+            b'S' => Some((2, 3)),
+            b'T' => Some((2, 4)),
+            b'U' => Some((2, 5)),
+            b'V' => Some((2, 6)),
+            b'W' => Some((2, 7)),
+            b'X' => Some((3, 0)),
+            b'Y' => Some((3, 1)),
+            b'Z' => Some((3, 2)),
+            b' ' => Some((3, 7)),
+            b'0' => Some((4, 0)),
+            b'1' => Some((4, 1)),
+            b'2' => Some((4, 2)),
+            b'3' => Some((4, 3)),
+            b'4' => Some((4, 4)),
+            b'5' => Some((4, 5)),
+            b'6' => Some((4, 6)),
+            b'7' => Some((4, 7)),
+            b'8' => Some((5, 0)),
+            b'9' => Some((5, 1)),
+            b':' => Some((5, 2)),
+            b';' => Some((5, 3)),
+            b',' => Some((5, 4)),
+            b'-' => Some((5, 5)),
+            b'.' => Some((5, 6)),
+            b'/' => Some((5, 7)),
+            b'\r' | b'\n' => Some((6, 0)), // Enter
+            0x08 => Some((3, 5)),          // Backspace -> Left Arrow as Backspace behavior
+            _ => None,
         }
     }
-    fn update_keyboard(&mut self, w: &minifb::Window) {
-        let mut coords: Vec<(usize, usize)> = Vec::new();
-        let keys = w.get_keys();
-        // clear out our internal keyboard matrix
-        for c in self.col.iter_mut() {
-            *c = 0
-        }
-        if !keys.is_empty() {
-            let shift = keys.iter().any(|&k| k == Key::LeftShift || k == Key::RightShift);
-            if shift {
-                // shift key is down; check shift_map to see if there are any matches
-                // if so then the 1st match will be the only key press we report (any other keys will be ignored)
-                if let Some(v) = keys.iter().find_map(|k| self.shift_map.get(k)) {
-                    v.iter().for_each(|&c| coords.push(c));
-                }
+
+    pub fn set_key(&mut self, key: u8, pressed: bool) {
+        if let Some((row, col)) = Self::ascii_to_matrix(key) {
+            if pressed {
+                self.col[col] |= 1 << row;
+            } else {
+                self.col[col] &= !(1 << row);
             }
-            if coords.is_empty() {
-                // shift key is not down or we didn't find a shift+key mapping
-                // so now we just try to use a direct mapping of each of the keypresses
-                keys.iter().for_each(|k| {
-                    if let Some(v) = self.direct_map.get(k) {
-                        v.iter().for_each(|&c| coords.push(c));
-                    }
-                });
-            }
-            // now set each column in the matrix based on the new (row,col) coords
-            coords.iter().for_each(|&(r, c)| self.col[c] |= 1 << r as u8);
+            self.strobe_keyboard();
         }
-        self.strobe_keyboard()
     }
-    */
     pub fn strobe_keyboard(&mut self) {
         // strobe the keyboard based on side B output
         let mut com = 0u8;

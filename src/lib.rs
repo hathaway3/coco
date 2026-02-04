@@ -19,6 +19,7 @@ pub mod debug;
 pub mod devmgr;
 pub mod error;
 pub mod hex;
+pub mod input;
 pub mod instructions;
 pub mod memory;
 pub mod obj;

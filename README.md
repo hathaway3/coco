@@ -85,8 +85,11 @@ To add a real CoCo boot ROM:
 
 - **Host Build** (`cargo run`): Uses standard keyboard input via terminal or window.
 - **RP2350 Build**:
-  - **Status**: Work In Progress.
-  - Currently, the emulator core runs autonomously. Keyboard input drivers (DVI/USB HID) are being integrated.
+  - **PS/2 Keyboard**: Implemented via PIO.
+    - **Connect Data Line**: GPIO 28
+    - **Connect Clock Line**: GPIO 29
+    - **VCC/GND**: Connect to 5V (or 3.3V) and GND.
+  - **USB Keyboard**: Placeholder (Not yet implemented).
   - Debug output is available via the USB Serial / UART console.
 
 ## Host Usage (macOS/Linux/Windows)

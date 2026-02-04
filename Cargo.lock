@@ -305,6 +305,8 @@ dependencies = [
  "minifb",
  "panic-probe",
  "pico-dvi-rs",
+ "pio",
+ "pio-proc",
  "regex",
  "rp235x-hal",
  "serde",

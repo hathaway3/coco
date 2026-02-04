@@ -43,6 +43,10 @@ mod embedded {
     // Import renderer functions
     use pico_dvi_rs::render::{end_display_list, init_display_swapcell, start_display_list};
 
+    // Input Support
+    use coco::input::{ps2::Ps2Keyboard, usb::UsbKeyboard, InputDevice, InputEvent};
+    use hal::pio::PIOExt;
+
     #[rp235x_hal::entry]
     fn main() -> ! {
         // ... (setup skipped) ...
@@ -127,6 +131,20 @@ mod embedded {
 
         defmt::info!("DVI signal started on Core 1.");
 
+        // --- Input Initialization ---
+        // Split PIO0 for PS/2 (and potentially USB later)
+        let (mut pio0, sm0, _, _, _) = pac.PIO0.split(&mut pac.RESETS);
+
+        // Configure PS/2 Pins (GPIO 28 = Data, GPIO 29 = Clock)
+        let ps2_data = pins.gpio28.into_function::<hal::gpio::FunctionPio0>();
+        let ps2_clk = pins.gpio29.into_function::<hal::gpio::FunctionPio0>();
+
+        // Initialize PS/2 Keyboard Driver
+        let mut ps2_kb = Ps2Keyboard::new(&mut pio0, sm0, ps2_data.id().num, ps2_clk.id().num);
+
+        // Initialize USB Keyboard Driver (Placeholder)
+        let mut usb_kb = UsbKeyboard::new();
+
         // --- Emulator Core Initialization ---
         let mut dm = DeviceManager::new();
         let mut core = Core::new(
@@ -155,6 +173,21 @@ mod embedded {
                 }
             }
             // Update devices
+
+            // Poll Input Devices
+            if let Some(event) = ps2_kb.poll() {
+                match event {
+                    InputEvent::Press(k) => dm.pia0.lock().set_key(k, true),
+                    InputEvent::Release(k) => dm.pia0.lock().set_key(k, false),
+                }
+            }
+            if let Some(event) = usb_kb.poll() {
+                match event {
+                    InputEvent::Press(k) => dm.pia0.lock().set_key(k, true),
+                    InputEvent::Release(k) => dm.pia0.lock().set_key(k, false),
+                }
+            }
+
             dm.update();
 
             // Build DVI Display List
