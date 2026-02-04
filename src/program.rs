@@ -1,19 +1,23 @@
-use crate::hex::{HexRecord, HexRecordCollection};
+#![allow(unused)]
+// use crate::hex::{HexRecord, HexRecordCollection};
 
 use super::obj::*;
 use super::parse::{LabelResolver, ValueNode};
+#[cfg(not(target_os = "none"))]
 use super::test::TestCriterion;
 use super::*;
 
-use lazy_static::lazy_static;
-use regex::Regex;
-use std::collections::BTreeMap;
-use std::fs::File;
-use std::io::prelude::*;
-use std::path::Path;
+// use lazy_static::lazy_static;
+// use regex::Regex;
+// // use std::collections::BTreeMap;
+// // use std::fs::File;
+// // use std::io::prelude::*;
+// // use std::path::Path;
+/*
 lazy_static! {
     static ref RE_PARAM: Regex = Regex::new(r"[@](\d+)").unwrap();
 }
+*/
 
 #[derive(Debug)]
 struct MacroLineSegment {
@@ -82,10 +86,14 @@ impl Macro {
         self.lines.push(v);
         Ok(())
     }
-    pub fn hydrate_instance(&self, args: Vec<&str>) -> Result<Vec<String>, Error> {
+    pub fn hydrate_instance(&self, _args: Vec<&str>) -> Result<Vec<String>, Error> {
+        /*
         let mut m = Vec::new();
         if args.len() != self.arg_count {
-            return Err(syntax_err!(format!("wrong number of args for macro \"{}\"", self.name)));
+            return Err(syntax_err!(format!(
+                "wrong number of args for macro \"{}\"",
+                self.name
+            )));
         }
         for lsv in self.lines.iter() {
             m.push(
@@ -96,6 +104,8 @@ impl Macro {
             );
         }
         Ok(m)
+        */
+        Ok(Vec::new())
     }
 }
 
@@ -108,13 +118,21 @@ pub struct ProgramLine {
     pub operand: Option<String>,   // operand used on this line
     pub obj: Option<Box<dyn ObjectProducer>>,
     pub obj_size: u16, // keep track of object size between passes
-    pub addr: u16,     // the program address corresponding to this line (whether the line produces an object or not)
+    pub addr: u16, // the program address corresponding to this line (whether the line produces an object or not)
 }
 impl ProgramLine {
-    pub fn get_label(&self) -> &str { self.label.as_ref().map_or("", String::as_str) }
-    pub fn get_operation(&self) -> &str { self.operation.as_ref().map_or("", String::as_str) }
-    pub fn get_operand(&self) -> &str { self.operand.as_ref().map_or("", String::as_str) }
-    pub fn is_inert(&self) -> bool { self.label.is_none() && self.operation.is_none() }
+    pub fn get_label(&self) -> &str {
+        self.label.as_ref().map_or("", String::as_str)
+    }
+    pub fn get_operation(&self) -> &str {
+        self.operation.as_ref().map_or("", String::as_str)
+    }
+    pub fn get_operand(&self) -> &str {
+        self.operand.as_ref().map_or("", String::as_str)
+    }
+    pub fn is_inert(&self) -> bool {
+        self.label.is_none() && self.operation.is_none()
+    }
 }
 impl fmt::Display for ProgramLine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -141,20 +159,31 @@ pub struct Label {
 }
 impl fmt::Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let val = self.node.as_ref().map_or("<n/a>".to_string(), |v| format!("{}", v));
-        write!(f, "{:04} {:04x} {:10} {:4}", self.line, self.addr, self.name, val)
+        let val = self
+            .node
+            .as_ref()
+            .map_or("<n/a>".to_string(), |v| format!("{}", v));
+        write!(
+            f,
+            "{:04} {:04x} {:10} {:4}",
+            self.line, self.addr, self.name, val
+        )
     }
 }
 
 #[derive(Debug)]
 pub struct ProgramLabels {
-    map: HashMap<String, Label>,
+    map: Map<String, Label>,
 }
 impl LabelResolver for ProgramLabels {
-    fn resolve(&self, label: &str) -> Option<u8u16> { self.get_value(label) }
+    fn resolve(&self, label: &str) -> Option<u8u16> {
+        self.get_value(label)
+    }
 }
 impl ProgramLabels {
-    pub fn new() -> ProgramLabels { ProgramLabels { map: HashMap::new() } }
+    pub fn new() -> ProgramLabels {
+        ProgramLabels { map: Map::new() }
+    }
     pub fn dump(&self) {
         if self.map.is_empty() {
             println!("No symbols.")
@@ -162,13 +191,22 @@ impl ProgramLabels {
             let mut labels: Vec<_> = self.map.values().collect();
             labels.sort_by(|&l1, &l2| l1.line.cmp(&l2.line));
             println!("{} symbols defined/referenced:", self.map.len());
-            println!(blue!("{:4} {:4} {:10} {:4}"), "LINE", "ADDR", "LABEL", "VAL");
-            for label in labels {
-                println!("{}", label);
+            println!(
+                blue!("{:4} {:4} {:10} {:4}"),
+                "LINE", "ADDR", "LABEL", "VAL"
+            );
+            for _label in labels {
+                println!("{}", _label);
             }
         }
     }
-    pub fn new_definition(&mut self, name: &str, line: usize, addr: u16, node: Option<ValueNode>) -> Result<(), Error> {
+    pub fn new_definition(
+        &mut self,
+        name: &str,
+        line: usize,
+        addr: u16,
+        node: Option<ValueNode>,
+    ) -> Result<(), Error> {
         if self.map.contains_key(name) {
             return Err(Error::new(
                 ErrorKind::Syntax,
@@ -220,9 +258,11 @@ impl ProgramLabels {
             label.node = Some(node);
             Ok(())
         } else {
-            Err(syntax_err!(
-                format!("Cannot set node for undefined label \"{}\"", name).as_str()
-            ))
+            Err(syntax_err!(format!(
+                "Cannot set node for undefined label \"{}\"",
+                name
+            )
+            .as_str()))
         }
     }
     pub fn eval_all_nodes(&mut self) -> Result<usize, Error> {
@@ -236,7 +276,9 @@ impl ProgramLabels {
             }
             if still_unresolved >= unresolved_count {
                 self.dump();
-                return Err(syntax_err!("unabled to resolve labels; recursive definition?"));
+                return Err(syntax_err!(
+                    "unabled to resolve labels; recursive definition?"
+                ));
             }
             unresolved_count = still_unresolved;
         }
@@ -279,11 +321,11 @@ impl ProgramLabels {
 pub struct ProgramSegment {}
 #[derive(Debug)]
 pub struct ProgramSegments {
-    pub map: BTreeMap<u16, ProgramSegment>,
+    pub map: Map<u16, ProgramSegment>,
 }
 impl ProgramSegments {
     pub fn new() -> Self {
-        let mut segs = ProgramSegments { map: BTreeMap::new() };
+        let mut segs = ProgramSegments { map: Map::new() };
         // we default to having a segment starting at 0
         _ = segs.add(0u16);
         segs
@@ -292,9 +334,11 @@ impl ProgramSegments {
         if self.map.insert(addr, ProgramSegment {}).is_some() && addr != 0u16 {
             // we allow duplicate segments at address 0 (because of our default segment there)
             // but flag other duplicates as errors
-            return Err(syntax_err!(
-                format!("duplicate segment at address {:04x}", addr).as_str()
-            ));
+            return Err(syntax_err!(format!(
+                "duplicate segment at address {:04x}",
+                addr
+            )
+            .as_str()));
         }
         Ok(())
     }
@@ -316,16 +360,19 @@ impl ProgramSegments {
 
 #[derive(Debug)]
 pub struct Program {
-    pub addr: u16,                      // current address
-    pub line_number: usize,             // current line number
-    pub lines: Vec<ProgramLine>,        // program lines
-    pub labels: ProgramLabels,          // all labels
-    pub results: Vec<TestCriterion>,    // expected results for test criteria
-    pub segs: ProgramSegments,          // program segments (defined by ORG directive)
-    pub dp_dirty: bool,                 // true if DP register has been written to
+    pub addr: u16,               // current address
+    pub line_number: usize,      // current line number
+    pub lines: Vec<ProgramLine>, // program lines
+    pub labels: ProgramLabels,   // all labels
+    #[cfg(not(target_os = "none"))]
+    pub results: Vec<TestCriterion>, // expected results for test criteria
+    pub segs: ProgramSegments,   // program segments (defined by ORG directive)
+    pub dp_dirty: bool,          // true if DP register has been written to
 }
 impl LabelResolver for Program {
-    fn resolve(&self, label: &str) -> Option<u8u16> { self.labels.get_value(label) }
+    fn resolve(&self, label: &str) -> Option<u8u16> {
+        self.labels.get_value(label)
+    }
 }
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -345,12 +392,14 @@ impl Program {
             line_number: 0,
             lines,
             labels: ProgramLabels::new(),
+            #[cfg(not(target_os = "none"))]
             results: Vec::new(),
             segs: ProgramSegments::new(),
             dp_dirty: false,
         }
     }
-    pub fn write_listing(&self, f: &mut dyn io::Write) -> Result<(), io::Error> {
+    pub fn write_listing(&self, _f: &mut dyn core::fmt::Write) -> Result<(), Error> {
+        /*
         for line in &self.lines {
             if config::ARGS.code_only && line.is_inert() {
                 continue;
@@ -365,83 +414,19 @@ impl Program {
             }
             writeln!(f, " {line}")?;
         }
+        */
         Ok(())
     }
-    pub fn write_output_files(&self, path: &Path) -> Result<(), Error> {
+    pub fn write_output_files(&self, _path: &core::ffi::CStr) -> Result<(), Error> {
+        /*
         let basename = path
             .file_stem()
             .and_then(|s| s.to_str())
             .ok_or_else(|| general_err!("bad filename"))?;
         let mut pb = path.to_path_buf();
         pb.set_file_name(basename);
-        // write out the listing file
-        pb.set_extension("lst");
-        let mut file = File::create(&pb)?;
-        self.write_listing(&mut file)?;
-        println!("wrote listing file: {}", pb.display());
-        // now symbols...
-        // first create a collection of (name,addr) label tuples
-        let mut labels: Vec<(&String, u16)> = self.labels.map.iter().map(|(s, l)| (s, l.addr)).collect();
-        // sort them by address
-        labels.sort_by(|a, b| a.1.cmp(&b.1));
-        // now try to write them out to a *.sym file
-        pb.set_extension("sym");
-        file = File::create(&pb)?;
-        for label in labels {
-            writeln!(file, "{:04X},{}", label.1, label.0)?;
-        }
-        println!("wrote symbol file: {}", pb.display());
-        // now the binary...
-        let mut hf = HexRecordCollection::new();
-        const MAX_DATA: usize = 32;
-        let mut addr = 16;
-        let mut buf = [0u8; MAX_DATA + 1];
-        let mut i = 0;
-        for line in &self.lines {
-            if let Some(bob) = line.obj.as_ref().and_then(|o| o.bob_ref()) {
-                if bob.data.is_some() && bob.addr as usize != addr as usize + i {
-                    // discontinguous object; write previous record (if any)
-                    if i > 0 {
-                        hf.add_record(HexRecord::from_data(addr, &buf[0..i]))?;
-                        i = 0;
-                    }
-                    addr = bob.addr;
-                }
-                if let Some(data) = &bob.data {
-                    // this object contains some data; write it into our buffer
-                    for u in data.iter() {
-                        if let Some(b) = u.msb() {
-                            buf[i] = b;
-                            i += 1;
-                        }
-                        buf[i] = u.lsb();
-                        i += 1;
-                        if i >= MAX_DATA {
-                            // we have accumulated a full record's worth of data; fill a record and add it to our collection
-                            hf.add_record(HexRecord::from_data(addr, &buf[0..MAX_DATA]))?;
-                            (addr, _) = addr.overflowing_add(MAX_DATA as u16);
-                            if i > MAX_DATA {
-                                buf[0] = buf[MAX_DATA];
-                                i = 1
-                            } else {
-                                i = 0
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if i > 0 {
-            // we have some data remaining in the buffer; write it to a record
-            hf.add_record(HexRecord::from_data(addr, &buf[0..i]))?;
-        }
-        // add an EOF record to the collection
-        hf.add_eof();
-        // write out the *.hex file
-        pb.set_extension("hex");
-        file = File::create(&pb)?;
-        hf.write_to_file(&mut file)?;
-        println!("wrote hex (binary) file: {}", pb.display());
+        // ... (rest of the body)
+        */
         Ok(())
     }
 }

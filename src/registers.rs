@@ -73,16 +73,24 @@ static CC_TABLE: [CCInfo;8] = [
 ];
 
 impl CCBit {
-    pub fn info(&self) -> &CCInfo { &CC_TABLE[*self as usize] }
+    pub fn info(&self) -> &CCInfo {
+        &CC_TABLE[*self as usize]
+    }
 }
 
 impl CCBits {
     pub fn reset(&mut self) {
         self.reg = 0x50; /* disable IRQ and FIRQ on reset */
     }
-    pub fn set_from_byte(&mut self, byte: u8) { self.reg = byte; }
-    pub fn or_with_byte(&mut self, byte: u8 ) { self.reg |= byte; }
-    pub fn get_as_byte(&self) -> u8 { self.reg }
+    pub fn set_from_byte(&mut self, byte: u8) {
+        self.reg = byte;
+    }
+    pub fn or_with_byte(&mut self, byte: u8) {
+        self.reg |= byte;
+    }
+    pub fn get_as_byte(&self) -> u8 {
+        self.reg
+    }
     pub fn set(&mut self, bit: CCBit, val: bool) {
         let mask: u8 = 1u8 << bit as usize;
         if val {
@@ -91,7 +99,9 @@ impl CCBits {
             self.reg &= !mask;
         }
     }
-    pub fn is_set(&self, bit: CCBit) -> bool { CC_TABLE[bit as usize].mask & self.reg != 0 }
+    pub fn is_set(&self, bit: CCBit) -> bool {
+        CC_TABLE[bit as usize].mask & self.reg != 0
+    }
     pub fn get_set_bits(&self) -> Vec<CCBit> {
         let mut v: Vec<CCBit> = Vec::new();
         for t in &CC_TABLE {
@@ -207,8 +217,12 @@ impl CCBits {
         self.set(CCBit::Z, result == 0);
         result
     }
-    pub fn cmp_u8(&mut self, val1: u8, val2: u8) { self.sub_u8(val1, val2, false); }
-    pub fn cmp_u16(&mut self, val1: u16, val2: u16) { self.sub_u16(val1, val2); }
+    pub fn cmp_u8(&mut self, val1: u8, val2: u8) {
+        self.sub_u8(val1, val2, false);
+    }
+    pub fn cmp_u16(&mut self, val1: u16, val2: u16) {
+        self.sub_u16(val1, val2);
+    }
     pub fn shl_u8(&mut self, val: u8) -> u8 {
         let c = sign_bit_8!(val);
         let result = val << 1;
@@ -262,29 +276,12 @@ impl CCBits {
         d
     }
 }
-use std::fmt;
+use core::fmt;
 impl fmt::Display for CCBits {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            concat!(
-                green!("{}:"),
-                "{} ",
-                green!("{}:"),
-                "{} ",
-                green!("{}:"),
-                "{} ",
-                green!("{}:"),
-                "{} ",
-                green!("{}:"),
-                "{} ",
-                green!("{}:"),
-                "{} ",
-                green!("{}:"),
-                "{} ",
-                green!("{}:"),
-                "{}"
-            ),
+            "{}:{} {}:{} {}:{} {}:{} {}:{} {}:{} {}:{} {}:{}",
             CC_TABLE[0].short,
             self.is_set(CC_TABLE[0].bit) as usize,
             CC_TABLE[1].short,
@@ -323,7 +320,9 @@ pub enum Name {
 const REG_NAMES: &[&str] = &["A", "B", "D", "X", "Y", "U", "S", "PC", "DP", "CC", "Z"];
 
 impl Name {
-    pub fn to_str(self) -> &'static str { REG_NAMES[self as usize] }
+    pub fn to_str(self) -> &'static str {
+        REG_NAMES[self as usize]
+    }
     pub fn from_str(s: &str) -> Self {
         match s.to_ascii_uppercase().as_str() {
             "A" => Name::A,
@@ -414,41 +413,24 @@ impl Set {
             Name::Z => panic!("invalid register"),
         }
     }
-    fn sync_d(&mut self) { self.d = ((self.a as u16) << 8) | (self.b as u16); }
+    fn sync_d(&mut self) {
+        self.d = ((self.a as u16) << 8) | (self.b as u16);
+    }
     fn sync_ab(&mut self) {
         self.a = (self.d >> 8) as u8;
         self.b = (self.d & 0xff) as u8;
     }
 }
 impl fmt::Debug for Set {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { <Set as fmt::Display>::fmt(self, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        <Set as fmt::Display>::fmt(self, f)
+    }
 }
 impl fmt::Display for Set {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            concat!(
-                blue!("X:"),
-                "{:04x} ",
-                blue!("Y:"),
-                "{:04x} ",
-                blue!("U:"),
-                "{:04x} ",
-                blue!("S:"),
-                "{:04x} ",
-                blue!("PC:"),
-                "{:04x} ",
-                blue!("A:"),
-                "{:02x} ",
-                blue!("B:"),
-                "{:02x} ",
-                blue!("D:"),
-                "{:04x} ",
-                blue!("DP:"),
-                "{:02x} ",
-                blue!("CC:"),
-                "{:02x}"
-            ),
+            "X:{:04x} Y:{:04x} U:{:04x} S:{:04x} PC:{:04x} A:{:02x} B:{:02x} D:{:04x} DP:{:02x} CC:{:02x}",
             self.x, self.y, self.u, self.s, self.pc, self.a, self.b, self.d, self.dp, self.cc.reg
         )
     }

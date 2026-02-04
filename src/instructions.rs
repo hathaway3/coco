@@ -1,13 +1,16 @@
 #![allow(non_snake_case)]
+#![allow(static_mut_refs)]
 
-use crate::core::InterruptType;
+use crate::cpu::InterruptType;
 
 use super::*;
 use memory::AccessType;
-use std::{fmt::Debug, sync::Once};
+// // use std::{fmt::Debug, sync::Once};
+use core::fmt::{self, Debug};
+use spin::Once;
 
 pub static mut FLAVOR_TABLE: [Option<Flavor>; 768] = [None; 768];
-pub static mut DESC_BY_NAME: Option<HashMap<&'static str, &'static Descriptor>> = None;
+pub static mut DESC_BY_NAME: Option<BTreeMap<&'static str, &'static Descriptor>> = None;
 static INIT: Once = Once::new();
 fn ft_index(op_code: u16) -> Option<usize> {
     match op_code & 0xff00 {
@@ -28,7 +31,7 @@ pub fn name_to_descriptor(name: &str) -> Option<&'static Descriptor> {
 /// Initialize static lookup tables.
 pub fn init() {
     INIT.call_once(|| {
-        let mut dbn = HashMap::new();
+        let mut dbn = BTreeMap::new();
         for desc in DESCRIPTORS {
             dbn.insert(desc.name, desc);
             for detail in desc.md {
@@ -180,6 +183,7 @@ pub mod TEPostByte {
 /// A namespace to organize some helpers for processing instruction post-byte codes for PSH and PUL
 #[allow(non_snake_case)]
 pub mod PPPostByte {
+    use super::*;
     pub const PC: u8 = 0b10000000;
     pub const SU: u8 = 0b01000000;
     pub const Y: u8 = 0b00100000;
@@ -308,10 +312,15 @@ impl Outcome {
         if self.writes.is_none() {
             self.writes = Some(Vec::new());
         }
-        self.writes.as_mut().unwrap().push(WriteRecord { addr, at, val });
+        self.writes
+            .as_mut()
+            .unwrap()
+            .push(WriteRecord { addr, at, val });
     }
 }
-pub fn is_high_byte_of_16bit_instruction(op: u8) -> bool { op == 0x10 || op == 0x11 }
+pub fn is_high_byte_of_16bit_instruction(op: u8) -> bool {
+    op == 0x10 || op == 0x11
+}
 /// Information about a specific instance of an instruction in the context of a running program.
 /// This includes the current values of all the registers and the calculated effective address
 /// along with all the specifics of the instruction itself (Flavor, etc.)
@@ -367,8 +376,16 @@ pub struct ModeDetail {
     pub am: usize,
 }
 impl ModeDetail {
-    pub fn addressing_mode(&self) -> AddressingMode { AddressingMode::from(self.am) }
-    pub fn op_size(&self) -> u16 { if (self.op & 0xff00) != 0 { 2 } else { 1 } }
+    pub fn addressing_mode(&self) -> AddressingMode {
+        AddressingMode::from(self.am)
+    }
+    pub fn op_size(&self) -> u16 {
+        if (self.op & 0xff00) != 0 {
+            2
+        } else {
+            1
+        }
+    }
     pub fn op_as_u8u16(&self) -> u8u16 {
         match self.op_size() {
             2 => u8u16::u16(self.op),
@@ -435,7 +452,9 @@ impl Descriptor {
         self.md.iter().find(|&m| m.addressing_mode() == am)
     }
     // return true if this instruction uses only inherent addressing mode
-    pub fn is_inherent(&self) -> bool { self.md.len() == 1 && self.md[0].addressing_mode() == AddressingMode::Inherent }
+    pub fn is_inherent(&self) -> bool {
+        self.md.len() == 1 && self.md[0].addressing_mode() == AddressingMode::Inherent
+    }
 }
 /// Represents a fully specified instruction -- one that maps to a specific op code.
 /// It combines a Descriptor with a specific ModeDetail
@@ -449,7 +468,7 @@ pub struct Flavor {
     pub detail: &'static ModeDetail,
 }
 
-impl std::fmt::Display for Flavor {
+impl core::fmt::Display for Flavor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -470,13 +489,22 @@ fn __nop(_: &Core, _: &mut Outcome) -> Result<(), Error> {
     // do nothing
     Ok(())
 }
-fn __psh_one(_: &Core, o: &mut Outcome, stack: registers::Name, reg: registers::Name) -> Result<(), Error> {
+fn __psh_one(
+    _: &Core,
+    o: &mut Outcome,
+    stack: registers::Name,
+    reg: registers::Name,
+) -> Result<(), Error> {
     let mut addr = o.new_ctx.get_register(stack).u16();
     if addr < registers::reg_size(reg) {
         return Err(runtime_err!(
             Some(o.inst.ctx),
             "{} stack overflow",
-            if stack == registers::Name::U { "user" } else { "system" }
+            if stack == registers::Name::U {
+                "user"
+            } else {
+                "system"
+            }
         ));
     }
     addr -= registers::reg_size(reg);
@@ -489,14 +517,23 @@ fn __psh_one(_: &Core, o: &mut Outcome, stack: registers::Name, reg: registers::
     o.new_ctx.set_register(stack, u8u16::u16(addr));
     Ok(())
 }
-fn __pul_one(c: &Core, o: &mut Outcome, stack: registers::Name, reg: registers::Name) -> Result<(), Error> {
+fn __pul_one(
+    c: &Core,
+    o: &mut Outcome,
+    stack: registers::Name,
+    reg: registers::Name,
+) -> Result<(), Error> {
     let addr = o.new_ctx.get_register(stack).u16();
     let size = registers::reg_size(reg);
     if (addr as usize + size as usize) > (1 + c.ram_top as usize) {
         return Err(runtime_err!(
             Some(o.inst.ctx),
             "{} stack underflow",
-            if stack == registers::Name::U { "user" } else { "system" }
+            if stack == registers::Name::U {
+                "user"
+            } else {
+                "system"
+            }
         ));
     }
     let at = if stack == registers::Name::U {
@@ -620,14 +657,20 @@ fn __exg(c: &Core, o: &mut Outcome) -> Result<(), Error> {
         ))
     }
 }
-fn __add(c: &Core, o: &mut Outcome) -> Result<(), Error> { __add_carry(c, o, false) }
-fn __adc(c: &Core, o: &mut Outcome) -> Result<(), Error> { __add_carry(c, o, true) }
+fn __add(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+    __add_carry(c, o, false)
+}
+fn __adc(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+    __add_carry(c, o, true)
+}
 fn __add_carry(c: &Core, o: &mut Outcome, carry: bool) -> Result<(), Error> {
     let reg = o.inst.flavor.desc.reg;
     let data = c._read_u8u16(AccessType::Generic, o.inst.ea, registers::reg_size(reg))?;
     let reg_val = o.new_ctx.get_register(reg);
     let new_val = match reg {
-        registers::Name::A | registers::Name::B => u8u16::u8(o.new_ctx.cc.add_u8(reg_val.u8(), data.u8(), carry)),
+        registers::Name::A | registers::Name::B => {
+            u8u16::u8(o.new_ctx.cc.add_u8(reg_val.u8(), data.u8(), carry))
+        }
         registers::Name::D => u8u16::u16(o.new_ctx.cc.add_u16(reg_val.u16(), data.u16())),
         _ => panic!("invalid register for add instruction"),
     };
@@ -639,7 +682,9 @@ fn __sub(c: &Core, o: &mut Outcome) -> Result<(), Error> {
     let data = c._read_u8u16(AccessType::Generic, o.inst.ea, registers::reg_size(reg))?;
     let reg_val = o.new_ctx.get_register(reg);
     let new_val = match reg {
-        registers::Name::A | registers::Name::B => u8u16::u8(o.new_ctx.cc.sub_u8(reg_val.u8(), data.u8(), false)),
+        registers::Name::A | registers::Name::B => {
+            u8u16::u8(o.new_ctx.cc.sub_u8(reg_val.u8(), data.u8(), false))
+        }
         registers::Name::D => u8u16::u16(o.new_ctx.cc.sub_u16(reg_val.u16(), data.u16())),
         _ => panic!("invalid register for sub instruction"),
     };
@@ -651,7 +696,9 @@ fn __sbc(c: &Core, o: &mut Outcome) -> Result<(), Error> {
     let data = c._read_u8(AccessType::Generic, o.inst.ea, None)?;
     let reg_val = o.new_ctx.get_register(reg);
     let new_val = match reg {
-        registers::Name::A | registers::Name::B => u8u16::u8(o.new_ctx.cc.sub_u8(reg_val.u8(), data, true)),
+        registers::Name::A | registers::Name::B => {
+            u8u16::u8(o.new_ctx.cc.sub_u8(reg_val.u8(), data, true))
+        }
         _ => panic!("invalid register for sub instruction"),
     };
     o.new_ctx.set_register(reg, new_val);
@@ -688,10 +735,13 @@ fn __daa(_: &Core, o: &mut Outcome) -> Result<(), Error> {
         msd = oa.0;
     }
     // always use reg_from_ methods to alter a, b and d
-    o.new_ctx.set_register(registers::Name::A, u8u16::u8(msd | lsd));
+    o.new_ctx
+        .set_register(registers::Name::A, u8u16::u8(msd | lsd));
     o.new_ctx.cc.set(registers::CCBit::C, oa.1);
     o.new_ctx.cc.set(registers::CCBit::Z, o.new_ctx.a == 0);
-    o.new_ctx.cc.set(registers::CCBit::N, o.new_ctx.a & 0b10000000 != 0);
+    o.new_ctx
+        .cc
+        .set(registers::CCBit::N, o.new_ctx.a & 0b10000000 != 0);
     o.new_ctx.cc.set(registers::CCBit::V, false);
     // the H flag is not effected by this operation
     Ok(())
@@ -740,7 +790,8 @@ fn __xor(c: &Core, o: &mut Outcome) -> Result<(), Error> {
     Ok(())
 }
 fn __bra(_: &Core, o: &mut Outcome) -> Result<(), Error> {
-    o.new_ctx.set_register(registers::Name::PC, u8u16::u16(o.inst.ea));
+    o.new_ctx
+        .set_register(registers::Name::PC, u8u16::u16(o.inst.ea));
     Ok(())
 }
 fn __bsr(c: &Core, o: &mut Outcome) -> Result<(), Error> {
@@ -759,8 +810,12 @@ fn __bcs(c: &Core, o: &mut Outcome) -> Result<(), Error> {
     }
     Ok(())
 }
-fn __bhs(c: &Core, o: &mut Outcome) -> Result<(), Error> { __bcc(c, o) }
-fn __blo(c: &Core, o: &mut Outcome) -> Result<(), Error> { __bcs(c, o) }
+fn __bhs(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+    __bcc(c, o)
+}
+fn __blo(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+    __bcs(c, o)
+}
 fn __bvc(c: &Core, o: &mut Outcome) -> Result<(), Error> {
     if !o.new_ctx.cc.is_set(registers::CCBit::V) {
         __bra(c, o)?;
@@ -924,8 +979,10 @@ fn __cmp(c: &Core, o: &mut Outcome) -> Result<(), Error> {
 }
 
 fn __lea(_: &Core, o: &mut Outcome) -> Result<(), Error> {
-    o.new_ctx.set_register(o.inst.flavor.desc.reg, u8u16::u16(o.inst.ea));
-    if o.inst.flavor.desc.reg == registers::Name::X || o.inst.flavor.desc.reg == registers::Name::Y {
+    o.new_ctx
+        .set_register(o.inst.flavor.desc.reg, u8u16::u16(o.inst.ea));
+    if o.inst.flavor.desc.reg == registers::Name::X || o.inst.flavor.desc.reg == registers::Name::Y
+    {
         o.new_ctx.cc.set(registers::CCBit::Z, o.inst.ea == 0);
     }
     Ok(())
@@ -945,17 +1002,22 @@ fn __st(_: &Core, o: &mut Outcome) -> Result<(), Error> {
     Ok(())
 }
 fn __jmp(_: &Core, o: &mut Outcome) -> Result<(), Error> {
-    o.new_ctx.set_register(registers::Name::PC, u8u16::u16(o.inst.ea));
+    o.new_ctx
+        .set_register(registers::Name::PC, u8u16::u16(o.inst.ea));
     Ok(())
 }
 fn __jsr(c: &Core, o: &mut Outcome) -> Result<(), Error> {
     __psh_one(c, o, registers::Name::S, registers::Name::PC)?;
     __jmp(c, o)
 }
-fn __rts(c: &Core, o: &mut Outcome) -> Result<(), Error> { __pul_one(c, o, registers::Name::S, registers::Name::PC) }
+fn __rts(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+    __pul_one(c, o, registers::Name::S, registers::Name::PC)
+}
 fn __tst(c: &Core, o: &mut Outcome) -> Result<(), Error> {
     let acc = match o.inst.flavor.desc.reg {
-        registers::Name::A | registers::Name::B => o.new_ctx.get_register(o.inst.flavor.desc.reg).u8(),
+        registers::Name::A | registers::Name::B => {
+            o.new_ctx.get_register(o.inst.flavor.desc.reg).u8()
+        }
         registers::Name::Z => c._read_u8(AccessType::Generic, o.inst.ea, None)?,
         _ => panic!("invalid register for TST instruction?!"),
     };
@@ -985,8 +1047,12 @@ fn __asl(c: &Core, o: &mut Outcome) -> Result<(), Error> {
     }
     Ok(())
 }
-fn __asr(c: &Core, o: &mut Outcome) -> Result<(), Error> { __shr(c, o, true) }
-fn __lsr(c: &Core, o: &mut Outcome) -> Result<(), Error> { __shr(c, o, false) }
+fn __asr(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+    __shr(c, o, true)
+}
+fn __lsr(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+    __shr(c, o, false)
+}
 fn __shr(c: &Core, o: &mut Outcome, preserve_sign: bool) -> Result<(), Error> {
     let reg = o.inst.flavor.desc.reg;
     if reg == registers::Name::Z {
@@ -1052,7 +1118,10 @@ fn __mul(_: &Core, o: &mut Outcome) -> Result<(), Error> {
 }
 
 fn __err(_: &Core, o: &mut Outcome) -> Result<(), Error> {
-    panic!("No implementation for instruction {}!", o.inst.flavor.desc.name);
+    panic!(
+        "No implementation for instruction {}!",
+        o.inst.flavor.desc.name
+    );
 }
 
 fn __meta(c: &Core, o: &mut Outcome) -> Result<(), Error> {

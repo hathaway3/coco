@@ -1,3 +1,6 @@
+#![allow(static_mut_refs)]
+use super::*;
+
 #[derive(Debug, Clone, Copy)]
 pub struct VdgModeDetails {
     pub cell_x: usize,     // width (in pixels) of each cell on the display
@@ -117,10 +120,6 @@ impl VdgMode {
         }
     }
 }
-use std::{
-    sync::{Arc, RwLock},
-    time::Duration,
-};
 
 use VdgMode::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,17 +136,17 @@ pub enum Color {
 }
 use Color::*;
 impl Color {
-    pub fn to_rgb(self) -> u32 {
+    pub fn to_rgb555(self) -> u16 {
         match self {
             Black => 0,
-            Green => 0x0020e000,
-            Yellow => 0x00fff000,
-            Blue => 0x000000ff,
-            Red => 0x00f00000,
-            Buff => 0x00e0e0e0,
-            Cyan => 0x0000efff,
-            Magenta => 0x00d000d0,
-            Orange => 0x00f06000,
+            Green => 0x03E0,   // 00000 11111 00000
+            Yellow => 0x7FE0,  // 11111 11111 00000
+            Blue => 0x001F,    // 00000 00000 11111
+            Red => 0x7C00,     // 11111 00000 00000
+            Buff => 0x7FFF,    // White-ish
+            Cyan => 0x03FF,    // 00000 11111 11111
+            Magenta => 0x7C1F, // 11111 00000 11111
+            Orange => 0x7D60,  // Approx orange
         }
     }
     // pub fn to_code(self) -> u8 { self as u8 }
@@ -164,8 +163,12 @@ impl Color {
             _ => Black,
         }
     }
-    pub fn from_3bits(bits: u8) -> Self { Color::from_code(bits + 1) }
-    pub fn from_2bits(bits: u8, css: bool) -> Self { Color::from_code(1 + (bits | if css { 4 } else { 0 })) }
+    pub fn from_3bits(bits: u8) -> Self {
+        Color::from_code(bits + 1)
+    }
+    pub fn from_2bits(bits: u8, css: bool) -> Self {
+        Color::from_code(1 + (bits | if css { 4 } else { 0 }))
+    }
 }
 // Setting refresh rate to roughly 30 Hz (emulating NTSC)
 pub const SCREEN_REFRESH_PERIOD: Duration = Duration::from_micros(33333);
@@ -214,20 +217,18 @@ impl Char {
 pub struct Vdg {
     mode: VdgMode,
     dirty: bool,
-    ram: &'static [u8],
     vram_offset: usize,
     ascii: bool,
 }
 unsafe impl Send for Vdg {}
 
+use crate::RAM_DISK;
+
 impl Vdg {
-    pub fn with_ram(ram: Arc<RwLock<Vec<u8>>>, vram_offset: usize/*, hsync: Arc<(Mutex<bool>, Condvar)>*/) -> Self {
-        let mut ram = ram.write().unwrap();
-        let ram = unsafe { std::slice::from_raw_parts(ram.as_mut_ptr(), ram.len()) };
+    pub fn with_ram(vram_offset: usize) -> Self {
         Vdg {
             mode: VdgMode::SG4,
             dirty: true,
-            ram,
             vram_offset,
             ascii: false,
         }
@@ -241,13 +242,15 @@ impl Vdg {
         }
     }
     #[allow(unused)]
-    pub fn interpret_chars_as_ascii(&mut self, ascii: bool) { self.ascii = ascii; }
+    pub fn interpret_chars_as_ascii(&mut self, ascii: bool) {
+        self.ascii = ascii;
+    }
     pub fn set_vram_offset(&mut self, vram_offset: usize) {
-        if (vram_offset + VRAM_SIZE) > self.ram.len() {
+        if (vram_offset + VRAM_SIZE) > unsafe { RAM_DISK.len() } {
             panic!(
                 "invalid vram_offset {:x} (ram.len={:x}, VRAM_SIZE={:x}",
                 vram_offset,
-                self.ram.len(),
+                unsafe { RAM_DISK.len() },
                 VRAM_SIZE
             )
         }
@@ -261,29 +264,49 @@ impl Vdg {
         }
     }
     #[allow(unused)]
-    pub fn get_mode(&self) -> VdgMode { self.mode }
+    pub fn get_mode(&self) -> VdgMode {
+        self.mode
+    }
 
     #[allow(unused)]
-    pub fn set_dirty(&mut self) { self.dirty = true }
+    pub fn set_dirty(&mut self) {
+        self.dirty = true
+    }
 
-    // Renders the contents of VRAM to the provided buffer where each pixel is defined by a u32 formatted as 0x00RRGGBB
+    // Renders the contents of VRAM to the provided buffer where each pixel is defined by a u16 formatted as RGB565
     // Returns true if any changes were made to the buffer.
-    pub fn render(&mut self, display: &mut [u32], css: bool) -> bool {
+    pub fn render(&mut self, display: &mut [u16], css: bool) -> bool {
         if !self.dirty && !ALWAYS_RENDER {
             return false;
         }
         self.dirty = false;
         match self.mode {
             SG4 => {
+                if unsafe { crate::RAM_DISK[SCREEN_DIM_X / 8 + self.vram_offset] != 0 } {
+                    // if the next byte in RAM is not 0 then assume it's ascii
+                    self.ascii = true;
+                }
                 for i in 0..(BLOCK_COLS * BLOCK_ROWS) {
-                    let index = (((i / BLOCK_COLS) * BLOCK_DIM_Y) * SCREEN_DIM_X) + ((i % BLOCK_COLS) * BLOCK_DIM_X);
-                    self.draw_sg4_block(display, index, self.ram[i + self.vram_offset], css);
+                    let index = (((i / BLOCK_COLS) * BLOCK_DIM_Y) * SCREEN_DIM_X)
+                        + ((i % BLOCK_COLS) * BLOCK_DIM_X);
+                    self.draw_sg4_block(
+                        display,
+                        index,
+                        unsafe { crate::RAM_DISK[i + self.vram_offset] },
+                        css,
+                    );
                 }
             }
             SG6 => {
                 for i in 0..(BLOCK_COLS * BLOCK_ROWS) {
-                    let index = (((i / BLOCK_COLS) * BLOCK_DIM_Y) * SCREEN_DIM_X) + ((i % BLOCK_COLS) * BLOCK_DIM_X);
-                    self.draw_sg_block(display, index, self.ram[i + self.vram_offset], css);
+                    let index = (((i / BLOCK_COLS) * BLOCK_DIM_Y) * SCREEN_DIM_X)
+                        + ((i % BLOCK_COLS) * BLOCK_DIM_X);
+                    self.draw_sg_block(
+                        display,
+                        index,
+                        unsafe { RAM_DISK[i + self.vram_offset] },
+                        css,
+                    );
                 }
             }
 
@@ -292,7 +315,7 @@ impl Vdg {
         }
         true
     }
-    fn render_graphics(&self, display: &mut [u32], css: bool) {
+    fn render_graphics(&self, display: &mut [u16], css: bool) {
         let md = self.mode.get_details();
         let cells_per_src_byte = 8 / md.color_bits;
         let cells_per_row = SCREEN_DIM_X / md.cell_x;
@@ -305,12 +328,16 @@ impl Vdg {
                 // repeat for each row in each cell
                 for src_col in 0..src_bytes_per_row {
                     let src_index = self.vram_offset + src_col + src_row * src_bytes_per_row;
-                    let mut src_data = self.ram[src_index] as u16;
+                    let mut src_data = unsafe { RAM_DISK[src_index] } as u16;
                     for _ in 0..cells_per_src_byte {
                         let color = match md.color_bits {
                             1 => {
                                 src_data <<= 1;
-                                if src_data & 0x0100 == 0 { bg_color } else { fg_color }
+                                if src_data & 0x0100 == 0 {
+                                    bg_color
+                                } else {
+                                    fg_color
+                                }
                             }
                             2 => {
                                 src_data <<= 2;
@@ -320,7 +347,7 @@ impl Vdg {
                         };
                         // draw all pixels for this pixel row of this cell
                         for _ in 0..md.cell_x {
-                            display[dst_index] = color.to_rgb();
+                            display[dst_index] = color.to_rgb555();
                             dst_index += 1;
                         }
                     }
@@ -328,7 +355,7 @@ impl Vdg {
             }
         }
     }
-    fn render_sg_extended(&self, display: &mut [u32]) {
+    fn render_sg_extended(&self, display: &mut [u16]) {
         let md = self.mode.get_details();
         assert!(md.cell_x == 4 && md.cell_y < 12);
         let mut fg_color;
@@ -341,9 +368,11 @@ impl Vdg {
                     // each block is cell_rows high
                     // each cell_row in a block is defined by a byte in vram
                     // determine the index into vram where the source byte is stored
-                    let src_index = self.vram_offset + block_col + (block_row * cell_rows + cell_row) * BLOCK_COLS;
+                    let src_index = self.vram_offset
+                        + block_col
+                        + (block_row * cell_rows + cell_row) * BLOCK_COLS;
                     // get the data defining this cell row
-                    let cell_data = self.ram[src_index];
+                    let cell_data = unsafe { RAM_DISK[src_index] };
                     // if the byte represents an alphanumeric character then get it now
                     let ch = Char::try_from_ascii(cell_data);
                     // draw each row of pixels within the current cell(s)
@@ -353,7 +382,11 @@ impl Vdg {
                         let pattern = if let Some(ch) = &ch {
                             // this cell contains alphanumeric character data so use the internal font
                             // but grab the pattern from the corresponding pixel row of the character in the font map
-                            (fg_color, bg_color) = if ch.inverted { (Black, Green) } else { (Green, Black) };
+                            (fg_color, bg_color) = if ch.inverted {
+                                (Black, Green)
+                            } else {
+                                (Green, Black)
+                            };
                             !FONT_MAP[ch.font_index + pix_row + (cell_row * md.cell_y)]
                         } else {
                             // this is a block pattern
@@ -364,11 +397,13 @@ impl Vdg {
                             if cell_data & 2 == 2 {
                                 p |= 0xf0
                             };
-                            (fg_color, bg_color) = (Color::from_3bits((cell_data & 0x70) >> 4), Black);
+                            (fg_color, bg_color) =
+                                (Color::from_3bits((cell_data & 0x70) >> 4), Black);
                             p
                         };
                         // determine the index in the display where we're going to write these pixels
-                        let dst_index = SCREEN_DIM_X * (block_row * BLOCK_DIM_Y + cell_row * md.cell_y + pix_row)
+                        let dst_index = SCREEN_DIM_X
+                            * (block_row * BLOCK_DIM_Y + cell_row * md.cell_y + pix_row)
                             + block_col * BLOCK_DIM_X;
                         Vdg::draw_8_pixels(display, dst_index, pattern, fg_color, bg_color);
                     }
@@ -377,17 +412,31 @@ impl Vdg {
         }
     }
 
-    fn draw_sg4_block(&self, display: &mut [u32], index: usize, glyph: u8, css: bool) {
+    fn draw_sg4_block(&self, display: &mut [u16], index: usize, glyph: u8, css: bool) {
         if glyph < 0x80 {
             // the glyph is an ascii character
-            Vdg::draw_char_block(display, index, glyph, Color::Green, Color::Black, self.ascii);
+            Vdg::draw_char_block(
+                display,
+                index,
+                glyph,
+                Color::Green,
+                Color::Black,
+                self.ascii,
+            );
         } else {
             // the glyph is an SG4 or SG6 block
             self.draw_sg_block(display, index, glyph, css);
         }
     }
     #[inline(always)]
-    fn draw_char_block(display: &mut [u32], index: usize, glyph: u8, fg_color: Color, bg_color: Color, ascii: bool) {
+    fn draw_char_block(
+        display: &mut [u16],
+        index: usize,
+        glyph: u8,
+        fg_color: Color,
+        bg_color: Color,
+        ascii: bool,
+    ) {
         let ch = if ascii {
             Char::try_from_ascii(glyph)
         } else {
@@ -413,7 +462,7 @@ impl Vdg {
         }
     }
     #[inline(always)]
-    fn draw_sg_block(&self, display: &mut [u32], index: usize, glyph: u8, css: bool) {
+    fn draw_sg_block(&self, display: &mut [u16], index: usize, glyph: u8, css: bool) {
         let md = self.mode.get_details();
         let fg_color = if md.color_bits == 3 {
             Color::from_3bits((glyph & 0x70) >> 4)
@@ -442,15 +491,21 @@ impl Vdg {
         }
     }
     #[inline(always)]
-    fn draw_8_pixels(display: &mut [u32], index: usize, bits: u8, fg_color: Color, bg_color: Color) {
+    fn draw_8_pixels(
+        display: &mut [u16],
+        index: usize,
+        bits: u8,
+        fg_color: Color,
+        bg_color: Color,
+    ) {
         let mut bit = 0x80u8;
         for i in 0..8 {
             if bits & bit != 0 {
                 // the pixel is set (gets foreground color)
-                display[index + i] = fg_color.to_rgb();
+                display[index + i] = fg_color.to_rgb555();
             } else {
                 // the pixel is not set (gets background color)
-                display[index + i] = bg_color.to_rgb();
+                display[index + i] = bg_color.to_rgb555();
             }
             bit >>= 1;
         }

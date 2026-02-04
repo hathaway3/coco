@@ -1,4 +1,4 @@
-use std::fmt;
+use core::fmt;
 
 /// u8u16 is a helper enum for dealing with values that may be either u8 or u16.
 /// It allows code that cares only about the value to focus on the value while
@@ -11,11 +11,10 @@ pub enum u8u16 {
 }
 impl fmt::Display for u8u16 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let s = match self {
-            u8u16::u8(val) => format!("{:02X}", val),
-            u8u16::u16(val) => format!("{:04X}", val),
-        };
-        write!(f, "{:width$}", s, width = f.width().unwrap_or(0))
+        match self {
+            u8u16::u8(val) => write!(f, "{:02X}", val),
+            u8u16::u16(val) => write!(f, "{:04X}", val),
+        }
     }
 }
 
@@ -58,7 +57,9 @@ impl u8u16 {
             u8u16::u16(val) => (val & 0xff) as u8,
         }
     }
-    pub fn lsb(&self) -> u8 { self.u8() }
+    pub fn lsb(&self) -> u8 {
+        self.u8()
+    }
     pub fn msb(&self) -> Option<u8> {
         match self {
             u8u16::u8(_) => None,
@@ -74,7 +75,9 @@ impl u8u16 {
         buf[bytes] = self.lsb();
         bytes + 1
     }
-    pub fn i16(self) -> i16 { self.sign_extended().u16() as i16 }
+    pub fn i16(self) -> i16 {
+        self.sign_extended().u16() as i16
+    }
     pub fn twos_complement(self) -> Self {
         match self {
             u8u16::u8(b) => {

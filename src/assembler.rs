@@ -1,3 +1,4 @@
+#![allow(unused)]
 //! Building a 6809 assembly language program is a multi-step process:  
 //!
 //!  1. Identify all label definitions and references
@@ -17,27 +18,33 @@
 //! This module along with parse.rs provide most of the work required to translate
 //! from assembly language to machine code.
 use super::obj::*;
+// use core::panic::PanicInfo;
 use super::parse::{OperandDescriptor, Parser};
-use super::test::TestCriterion;
+#[cfg(not(target_os = "none"))]
+#[cfg(not(target_os = "none"))]
+use super::test::{AddrOrVal, RegOrAddr, TestCriterion};
+// use hal::prelude::*;
 use super::*;
 
-use regex::Regex;
-use std::fs::File;
-use std::io::{self, BufRead};
+// use regex::Regex;
+// // use std::fs::File;
+// // use std::io::{self, BufRead};
+use crate::error::{Error, ErrorKind};
 
 /// The container for our assembler methods.
 pub struct Assembler {
     parser: Parser,
-    re_result_line: Regex,           // matches test criterion
-    re_comment_or_blank_line: Regex, // matches a line that is blank or only contains a comment
-    re_statement: Regex, // matches a generic assembly statement line ([label] operation [operand [comment]])
-    re_macro_args: Regex, // matches a comma delimited list of parameters for a macro
+    // re_result_line: Regex,           // matches test criterion
+    // re_comment_or_blank_line: Regex, // matches a line that is blank or only contains a comment
+    // re_statement: Regex, // matches a generic assembly statement line ([label] operation [operand [comment]])
+    // re_macro_args: Regex, // matches a comma delimited list of parameters for a macro
 }
 impl Assembler {
-    pub fn new() -> Assembler {
+    pub fn new(_inst: &instructions::Instance) -> Assembler {
         instructions::init();
         Assembler {
             parser: Parser::new(),
+            /*
             re_result_line: Regex::new(r"^;![ \t]*([^\s]+)[ \t]*=[ \t]*([^\s]+)[ \t]*$").unwrap(),
             re_comment_or_blank_line: Regex::new(r"^(?:[ \t]*[*;].*)|^[ \t]*$").unwrap(),
             re_macro_args: Regex::new(r"^(?:(?:[^\s,;*]+)(?:(?:[,][ ]*)(?:[^\s,]+))*)").unwrap(),
@@ -45,6 +52,7 @@ impl Assembler {
                 r"(?i)^(?:([$._a-z0-9]{1,15})[:]?)?(?:(?:[ \t]+([^\s;*]+))?(?:[ \t]+(?:([^\s].*)|.*))?)?$",
             )
             .unwrap(),
+            */
         }
     }
 
@@ -56,7 +64,7 @@ impl Assembler {
         I: IntoIterator<Item = T>,
         T: Into<String>,
     {
-        let mut macros = HashMap::new();
+        let mut macros = Map::new();
         let mut mo: Option<Macro> = None;
         let mut src_line_num = 0usize;
         let mut prog_lines = Vec::new();
@@ -82,15 +90,43 @@ impl Assembler {
         for line in src {
             src_line_num += 1;
             let line = line.into();
-            let mut label = None;
-            let mut operation = None;
-            let mut operand = None;
-            if let Some(statement) = self.re_statement.captures(line.as_str()) {
-                // the source line looks like a statement; try to extract the fields
-                label = statement.get(1).map(|s| s.as_str().to_string());
-                // operations (including macro names!) are case insensitive
-                operation = statement.get(2).map(|m| m.as_str().to_ascii_uppercase());
-                operand = statement.get(3).map(|s| s.as_str().to_string());
+            let mut label: Option<String> = None;
+            let _expected_duration_cycles: Option<u64> = None;
+            let mut operation: Option<String> = None;
+            let mut operand: Option<String> = None;
+            // Manual parsing of the assembly statement: [label] [operation [operand [comment]]]
+            let trimmed = line.trim_start();
+            if trimmed.is_empty() || trimmed.starts_with('*') || trimmed.starts_with(';') {
+                // blank line or comment
+            } else {
+                let mut parts = line.split_whitespace();
+                let first = parts.next();
+                let second = parts.next();
+                let remains = parts.collect::<Vec<&str>>().join(" ");
+
+                if line.chars().next().map_or(false, |c| !c.is_whitespace()) {
+                    // line starts with a label
+                    label = first.map(|s| s.trim_end_matches(':').to_string());
+                    operation = second.map(|s| s.to_ascii_uppercase());
+                    operand = if remains.is_empty() {
+                        None
+                    } else {
+                        Some(remains)
+                    };
+                } else {
+                    // no label, line starts with whitespace
+                    operation = first.map(|s| s.to_ascii_uppercase());
+                    operand = if second.is_none() {
+                        None
+                    } else {
+                        let mut op_plus_remains = second.unwrap().to_string();
+                        if !remains.is_empty() {
+                            op_plus_remains.push(' ');
+                            op_plus_remains.push_str(&remains);
+                        }
+                        Some(op_plus_remains)
+                    };
+                }
             }
             if operation.as_deref() == Some(".MACRO") {
                 // found a ".macro" (begin macro defn) statement
@@ -108,7 +144,14 @@ impl Assembler {
                     }
                     // create a new Macro object and hold it in the mo Option
                     mo = Some(Macro::new(&name));
-                    add_line(&mut prog_lines, src_line_num, format!("; {}", &line), None, None, None);
+                    add_line(
+                        &mut prog_lines,
+                        src_line_num,
+                        format!("; {}", &line),
+                        None,
+                        None,
+                        None,
+                    );
                     continue;
                 }
                 // no name found for this macro
@@ -122,7 +165,14 @@ impl Assembler {
                 } else {
                     return Err(syntax_err_line!(src_line_num, "invalid macro end"));
                 }
-                add_line(&mut prog_lines, src_line_num, format!("; {}", &line), None, None, None);
+                add_line(
+                    &mut prog_lines,
+                    src_line_num,
+                    format!("; {}", &line),
+                    None,
+                    None,
+                    None,
+                );
                 continue;
             }
             if let Some(mut m) = mo {
@@ -130,7 +180,14 @@ impl Assembler {
                 m.add_line(&line)
                     .map_err(|e| line_err!(prog_lines.len(), e.kind, e.msg))?;
                 // also add this line as a comment in the program
-                add_line(&mut prog_lines, src_line_num, format!("; {}", &line), None, None, None);
+                add_line(
+                    &mut prog_lines,
+                    src_line_num,
+                    format!("; {}", &line),
+                    None,
+                    None,
+                    None,
+                );
                 mo = Some(m);
                 continue;
             }
@@ -160,28 +217,36 @@ impl Assembler {
                     None,
                 );
                 // collect any/all args for the macro
-                let args = if let Some(a) = operand
-                    .as_ref()
-                    .and_then(|s| self.re_macro_args.captures(s.as_str()))
-                {
-                    a.get(0)
-                        .unwrap()
-                        .as_str()
-                        .split(',')
-                        .map(|s| s.trim())
-                        .collect::<Vec<&str>>()
-                } else {
-                    Vec::new()
-                };
+                // let args = if let Some(a) = operand
+                //     .as_ref()
+                //     .and_then(|s| self.re_macro_args.captures(s.as_str()))
+                // {
+                //     a.get(0)
+                //         .unwrap()
+                //         .as_str()
+                //         .split(',')
+                //         .map(|s| s.trim())
+                //         .collect::<Vec<&str>>()
+                // } else {
+                // };
+                let args = operand
+                    .as_deref()
+                    .map_or(Vec::new(), |s| s.split(',').map(|s| s.trim()).collect());
                 // expand the macro and add the resulting lines to the program
                 m.hydrate_instance(args)?.into_iter().for_each(|s| {
-                    let (a, b, c) = self.re_statement.captures(&s).map_or((None, None, None), |c| {
-                        (
-                            c.get(1).map(|m| m.as_str().to_string()),
-                            c.get(2).map(|m| m.as_str().to_ascii_uppercase()),
-                            c.get(3).map(|m| m.as_str().to_string()),
-                        )
-                    });
+                    /*
+                    let (a, b, c) =
+                        self.re_statement
+                            .captures(&s)
+                            .map_or((None, None, None), |c| {
+                                (
+                                    c.get(1).map(|m| m.as_str().to_string()),
+                                    c.get(2).map(|m| m.as_str().to_ascii_uppercase()),
+                                    c.get(3).map(|m| m.as_str().to_string()),
+                                )
+                            });
+                    */
+                    let (a, b, c) = (None, None, None); // Macro expansion recursion needs similar parsing logic
                     add_line(&mut prog_lines, src_line_num, s, a, b, c);
                 });
                 continue;
@@ -197,24 +262,35 @@ impl Assembler {
             );
         }
         // we've read through all the supplied source lines
-        if let Some(m) = mo {
+        if let Some(_m) = mo {
             // a macro definition was begun but never ended
-            return Err(syntax_err!(format!("no end found for macro \"{}\"", m.name)));
+            return Err(syntax_err!(format!(
+                "no end found for macro \"{}\"",
+                _m.name
+            )));
         }
         Ok(Program::new(prog_lines))
     }
 
     /// Attempt to load and build an assembly language program from a file with the given path.
-    pub fn assemble_from_file(&self, path: &Path) -> Result<Program, Error> {
-        let src = io::BufReader::new(File::open(path)?)
-            .lines()
-            .collect::<Result<Vec<String>, io::Error>>()?;
-        let mut program = self.load_program(src)?;
-        self.assemble_program(&mut program)?;
-        if config::ARGS.write_files {
-            _ = program.write_output_files(path);
-        }
-        Ok(program)
+    pub fn assemble_from_file(&self, _path: &core::ffi::CStr) -> Result<Program, Error> {
+        /*
+                let src = io::BufReader::new(File::open(path)?)
+                    .lines()
+                    .collect::<Result<Vec<String>, io::Error>>()?;
+                let _function_start = self.clock_cycles;
+        program(src)?;
+                self.assemble_program(&mut program)?;
+                if unsafe { config::ARGS.write_files } {
+                    _ = program.write_output_files(path);
+                }
+                Ok(program)
+                */
+        Err(Error::new(
+            ErrorKind::General,
+            None,
+            "File assembly not supported on this platform",
+        ))
     }
 
     /// Performs the full build process to create a machine code program from the
@@ -242,10 +318,11 @@ impl Assembler {
             }
         }
         println!("Post-processing...");
+        #[cfg(not(target_os = "none"))]
         self.post_build(program)?;
         println!("Build complete.");
-        if config::ARGS.list {
-            program.write_listing(&mut io::stdout())?;
+        if unsafe { config::ARGS.debug } || unsafe { config::ARGS.trace } {
+            // program.write_listing(&mut io::stdout())?;
         }
         Ok(())
     }
@@ -263,7 +340,12 @@ impl Assembler {
             // Does the line contain an operation (or assembler directive)?
             if line.operation.is_some() {
                 // parse the operation and potentially create the corresponding binary object
-                self.process_op_line(&mut program.segs, &mut program.labels, line, program.dp_dirty)?;
+                self.process_op_line(
+                    &mut program.segs,
+                    &mut program.labels,
+                    line,
+                    program.dp_dirty,
+                )?;
                 // get any/all object address and size info
                 if let Some(obj) = line.obj.as_ref() {
                     // check to see if this object has a static address assignment
@@ -285,8 +367,7 @@ impl Assembler {
                         program.labels.set_address(label, line.addr)?;
                     }
                 }
-            } else if line.label.is_none() {
-                // the line contains neither label nor operation
+                /*
                 // is it a result line? (i.e. lines of the form ";! <reg|addr> = <val>")
                 if let Some(c) = self.re_result_line.captures(line.src.as_str()) {
                     if c.get(1).is_none() || c.get(2).is_none() {
@@ -297,9 +378,18 @@ impl Assembler {
                         .push(TestCriterion::new(line.src_line_num, &c[1], &c[2]));
                     return Ok(());
                 }
+                */
+                /*
                 // ...or is it just a whole line of comments or whitespace?
                 if self.re_comment_or_blank_line.is_match(line.src.as_str()) {
                     // nothing to do; move on to the next line
+                    return Ok(());
+                }
+                */
+                if line.src.trim().is_empty()
+                    || line.src.trim().starts_with('*')
+                    || line.src.trim().starts_with(';')
+                {
                     return Ok(());
                 }
                 // theoretically, we shouldn't be able to reach this point
@@ -357,7 +447,7 @@ impl Assembler {
             if let Some(label) = line.label.as_ref() {
                 // update the label's address to match the line's address
                 let old_addr = program.labels.set_address(label, line.addr)?;
-                if old_addr!= line.addr {
+                if old_addr != line.addr {
                     // the label's address changed; note the change in our counter
                     changes += 1;
                 }
@@ -378,6 +468,7 @@ impl Assembler {
     }
     /// Perform final phase of the build process. For now, this only entails parsing
     /// any test criteria that the program contains.
+    #[cfg(not(target_os = "none"))]
     fn post_build(&self, program: &mut Program) -> Result<(), Error> {
         for tc in &mut program.results {
             // Each TestCriterion must be parsed AFTER build is complete so that all labels can be resolved.
@@ -392,7 +483,11 @@ impl Assembler {
     /// Otherwise, an Error is returned. On success, an ObjectProducer for the operation
     /// is added to the provided ProgramLine.
     fn process_op_line(
-        &self, segs: &mut ProgramSegments, labels: &mut ProgramLabels, line: &mut ProgramLine, dp_dirty: bool,
+        &self,
+        segs: &mut ProgramSegments,
+        labels: &mut ProgramLabels,
+        line: &mut ProgramLine,
+        dp_dirty: bool,
     ) -> Result<(), Error> {
         // first see if this is actually an assembler directive
         if self.process_directive_line(segs, labels, line)? {
@@ -401,8 +496,9 @@ impl Assembler {
         }
         // it's not a directive; see if it's an instruction
         // using ok_or_else to avoid executing the format! every time this next line is executed.
-        let desc = instructions::name_to_descriptor(line.get_operation())
-            .ok_or_else(|| syntax_err!(format!("Invalid operation: \"{}\"", line.get_operation())))?;
+        let desc = instructions::name_to_descriptor(line.get_operation()).ok_or_else(|| {
+            syntax_err!(format!("Invalid operation: \"{}\"", line.get_operation()))
+        })?;
         let od = if line.operand.is_none() || desc.is_inherent() {
             // the instruction uses only inherent addressing or there is no operand
             OperandDescriptor::new()
@@ -410,7 +506,9 @@ impl Assembler {
             // there may be an operand and it may be required so try to parse it
             self.parser.parse_operand(line.get_operand())?
         };
-        line.obj = Some(Box::new(Instruction::try_new(desc, od, line.addr, labels, dp_dirty)?));
+        line.obj = Some(Box::new(Instruction::try_new(
+            desc, od, line.addr, labels, dp_dirty,
+        )?));
         Ok(())
     }
 
@@ -423,7 +521,10 @@ impl Assembler {
     ///  - ```Err(Error)``` line is a directive but is invalid
     ///
     fn process_directive_line(
-        &self, segs: &mut ProgramSegments, labels: &mut ProgramLabels, line: &mut ProgramLine,
+        &self,
+        segs: &mut ProgramSegments,
+        labels: &mut ProgramLabels,
+        line: &mut ProgramLine,
     ) -> Result<bool, Error> {
         match line.get_operation() {
             "ORG" => {

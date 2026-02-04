@@ -1,18 +1,116 @@
-## <span>Rusty CoCo <br> TRS-80 Color Computer 1 & 2 emulator written in Rust</span>
+## Rusty# CoCo Emulator
+# CoCo on Raspberry Pi Pico 2 W
 
-<img align="right" width="400" alt="Rusty CoCo running hello.asm on a Mac" src="https://user-images.githubusercontent.com/10043170/223582721-8417ef45-73fa-4f3f-8234-87c406eefc83.png">
+A TRS-80 Color Computer emulator ported to the Raspberry Pi Pico 2 W (RP2350).
 
-Rusty CoCo emulates the color computer's hardware on Mac, Windows and Linux. 
-Graphics, sound, keyboard and joystick (using mouse) are all supported. 
-Peripherals like cassette, disk and RS-232 are not supported (_yet?_). 
+<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/Tandy_Radio_Shack_TRS-80_Color_Computer_2.jpg/440px-Tandy_Radio_Shack_TRS-80_Color_Computer_2.jpg" alt="CoCo 2" width="200"/>
+
+> [!NOTE]
+> This project has recently been ported to run on the **Raspberry Pi RP2350** microcontroller (e.g., Raspberry Pi Pico 2).
+
+## Quick Start (One-Click Build)
+
+We provide scripts to automatically set up the environment and build the firmware.
+
+**Mac / Linux:**
+1. Open a terminal.
+2. Run setup: `./setup_mac_linux.sh`
+3. Build firmware: `./build_firmware.sh`
+
+**Windows:**
+1. Double-click `setup_windows.bat`.
+2. Double-click `build_firmware.bat`.
+
+The output file `coco.uf2` will be generated in the project root. Put your Pico in bootloader mode (hold BOOTSEL and plug in) and drag this file onto the drive.
+
+## Manual Build Instructions
+- **CPU**: Motorola 6809E emulation.
+- **Video**: VDG (MC6847) emulation.
+- **I/O**: Standard PIA (MC6821) support.
+- **Platform**: Cross-platform (host OS) and Embedded (RP2350).
+
+## Building for RP2350 (Embedded)
+
+To run this emulator on a Raspberry Pi RP2350:
+
+### 1. Prerequisites
+- **Rust & Cargo**: Install from [rustup.rs](https://rustup.rs).
+- **ARM Target**: `rustup target add thumbv8m.main-none-eabihf`
+- **Tools**:
+  - `cargo-binutils`: `cargo install cargo-binutils`
+  - `elf2uf2-rs`: `cargo install elf2uf2-rs` (for UF2 generation)
+  - `probe-rs` (optional, for debugging): `cargo install probe-rs --features cli`
+
+### 2. Build Firmware
+Run the following command to build the release firmware:
+```bash
+cargo build --release --target thumbv8m.main-none-eabihf
+```
+The resulting ELF binary will be at `target/thumbv8m.main-none-eabihf/release/coco`.
+
+### 3. Deploy
+**Option A: Drag and Drop (UF2)**
+1. Put your RP2350 device into bootloader mode (hold BOOTSEL while plugging in).
+2. Convert the ELF to UF2 and copy it:
+   ```bash
+   elf2uf2-rs target/thumbv8m.main-none-eabihf/release/coco
+   ```
+   (This tool typically auto-detects the drive and copies it).
+
+**Option B: Probe-rs (Debugger)**
+If you have a debug probe (like a Pico Probe):
+```bash
+cargo run --release --target thumbv8m.main-none-eabihf
+```
+
+## Adding ROMs to RP2350 Build
+
+Currently, ROM loading on the embedded target is handled via `include_bytes!` at compile time, or hardcoded dummy data for testing.
+
+To add a real CoCo boot ROM:
+1. Place your `EXTENDED.ROM` or `COLOR.ROM` file in the project root.
+2. Modify `src/pico.rs` to load it:
+   ```rust
+   // inside src/pico.rs:
+   let rom_data = include_bytes!("../EXTENDED.ROM");
+   core.load_bytes(rom_data, 0x8000).unwrap(); // Adjust address as needed (A000, 8000, etc)
+   // core.force_reset_vector(0xA000).unwrap();
+   ```
+3. Rebuild the firmware.
+
+> [!IMPORTANT]
+> SD Card support for dynamic ROM loading is coming soon.
+
+## Input & Keyboard
+
+- **Host Build** (`cargo run`): Uses standard keyboard input via terminal or window.
+- **RP2350 Build**:
+  - **Status**: Work In Progress.
+  - Currently, the emulator core runs autonomously. Keyboard input drivers (DVI/USB HID) are being integrated.
+  - Debug output is available via the USB Serial / UART console.
+
+## Host Usage (macOS/Linux/Windows)
+
+You can still run the emulator on your Mac/PC for development:
+```bash
+cargo run
+```
+Note: This builds a dummy test harness for the library when strictly targeting the embedded configuration, but regular `cargo build` will verify the library code compiles.
+
+## License
+
+MIT
+Rusty CoCo emulates the color computer's hardware on Mac, Windows and Linux.
+Graphics, sound, keyboard and joystick (using mouse) are all supported.
+Peripherals like cassette, disk and RS-232 are not supported (_yet?_).
 It can run basic and extended basic and every cartridge I've tried.
 
-I undertook this project to improve my knowledge of Rust while also reliving some of my earliest computing experiences. 
-Writing Basic programs with sound and graphics 
-and playing old games that I last played 40 years ago has been fun, but I think the pinnacle for me was loading up the 
-EDTASM+ cartridge and being instantly transported back to my first exposure to 
-assembly language as a kid (with Lance Leventhal's book in hand). 
-It felt magical back then. 
+I undertook this project to improve my knowledge of Rust while also reliving some of my earliest computing experiences.
+Writing Basic programs with sound and graphics
+and playing old games that I last played 40 years ago has been fun, but I think the pinnacle for me was loading up the
+EDTASM+ cartridge and being instantly transported back to my first exposure to
+assembly language as a kid (with Lance Leventhal's book in hand).
+It felt magical back then.
 Still does.
 <br clear="left"/>  
 ## Features

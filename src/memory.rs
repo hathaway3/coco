@@ -34,12 +34,12 @@ impl Core {
             }
             0xff00..=0xff1f => {
                 // pia0
-                let mut pia = self.pia0.lock().unwrap();
+                let mut pia = self.pia0.lock();
                 pia.read((addr - 0xff00) as usize)
             }
             0xff20..=0xff3f => {
                 // pia1
-                let mut pia = self.pia1.lock().unwrap();
+                let mut pia = self.pia1.lock();
                 pia.read((addr - 0xff20) as usize)
             }
             0xffc0..=0xffdf => {
@@ -62,7 +62,12 @@ impl Core {
     }
     // helper version of _read_u8 that reads a byte into a u16
     #[inline(always)]
-    pub fn _read_u8_as_u16(&self, atype: AccessType, addr: u16, data: Option<&mut u16>) -> Result<u16, Error> {
+    pub fn _read_u8_as_u16(
+        &self,
+        atype: AccessType,
+        addr: u16,
+        data: Option<&mut u16>,
+    ) -> Result<u16, Error> {
         let byte = self._read_u8(atype, addr, None)?;
         let word = byte as u16;
         if let Some(data) = data {
@@ -73,7 +78,12 @@ impl Core {
     // version of _read... for u16
     // reads two bytes as a u16 (high order byte first)
     #[inline(always)]
-    pub fn _read_u16(&self, atype: AccessType, addr: u16, data: Option<&mut u16>) -> Result<u16, Error> {
+    pub fn _read_u16(
+        &self,
+        atype: AccessType,
+        addr: u16,
+        data: Option<&mut u16>,
+    ) -> Result<u16, Error> {
         let mut b: [u8; 2] = [0, 0];
         self._read_u8(atype, addr, Some(&mut b[0]))?;
         self._read_u8(atype, addr + 1, Some(&mut b[1]))?;
@@ -124,26 +134,26 @@ impl Core {
             }
             0xff00..=0xff1f => {
                 // pia0
-                let mut pia = self.pia0.lock().unwrap();
+                let mut pia = self.pia0.lock();
                 pia.write((addr - 0xff00) as usize, data);
             }
             0xff20..=0xff3f => {
                 // pia1
-                let mut pia = self.pia1.lock().unwrap();
+                let mut pia = self.pia1.lock();
                 pia.write((addr - 0xff20) as usize, data);
             }
             0xffc0..=0xffdf => {
                 // sam
-                let mut sam = self.sam.lock().unwrap();
+                let mut sam = self.sam.lock();
                 sam.write((addr - 0xffc0) as usize);
             }
             0xffe0..=0xffff => {
                 if addr > self.ram_top && at != AccessType::System {
-                // if the address of the write is in ROM and the write is from regular code then ignore it
+                    // if the address of the write is in ROM and the write is from regular code then ignore it
                     return Ok(());
                 }
                 // remap interrupt vectors to 0xbfe0-0xbfff
-                self.raw_ram[(addr-0x4000) as usize] = data;
+                self.raw_ram[(addr - 0x4000) as usize] = data;
             }
             _ => warn!("Write at unimplemented address {:04x}", addr),
         }

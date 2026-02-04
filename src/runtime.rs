@@ -1,16 +1,16 @@
-use std::time::Duration;
+// use core::time::Duration; // Already available via crate::Duration
 
 /// Implements the runtime engine of the simulator.
 use crate::{
-    core::InterruptType,
+    cpu::InterruptType,
     instructions::{PPPostByte, TEPostByte},
 };
 
 use super::*;
 use memory::AccessType;
 
-pub const HSYNC_PERIOD: Duration = Duration::from_nanos(63_500);
-pub const VSYNC_PERIOD: Duration = Duration::from_micros(16_667);
+pub const HSYNC_PERIOD_CYCLES: u64 = 64; // Approx for 1MHz
+pub const VSYNC_PERIOD_CYCLES: u64 = 16667; // Approx for 1MHz
 
 impl Core {
     /// Resets the 6809 by clearing the registers and
@@ -34,41 +34,37 @@ impl Core {
     /// Displays current perf information to stdout
     #[allow(dead_code)]
     fn report_perf(&self) {
+        /*
         if !config::ARGS.perf {
             return;
         }
-        let total_time = self.start_time.elapsed();
+        */
+        // let total_time_ms = 1; // dummy
         info!(
-            "Executed {} instructions in {:.2} sec; {:.3} MIPS; effective clock: {:.3} MHz",
-            self.instruction_count,
-            total_time.as_secs_f32(),
-            self.instruction_count as f32 / (total_time.as_secs_f32() * 1.0e6),
-            self.clock_cycles as f32 / (total_time.as_secs_f32() * 1.0e6)
+            "Executed {} instructions; effective clock: {} cycles",
+            self.instruction_count, self.clock_cycles,
         );
+        /*
         info!("\t{:<10} {:>6} {:>5}", "Phase", "Time", "%");
         info!("\t-----------------------");
         macro_rules! perf_row {
             ($name:expr, $id:expr) => {
-                info!(
-                    "\t{:<10} {:>6.3} {:>5.1}",
-                    $name,
-                    $id.as_secs_f32(),
-                    100.0 * $id.as_secs_f32() / total_time.as_secs_f32()
-                )
+                info!("\t{:<10} {:>6.3}", $name, $id.as_secs_f32(),)
             };
         }
         perf_row!("meta", self.meta_time);
         perf_row!("prep", self.prep_time);
         perf_row!("eval", self.eval_time);
         perf_row!("commit", self.commit_time);
-        perf_row!("total", total_time);
+        perf_row!("total", Duration::ZERO);
+        */
     }
     /// Starts executing instructions at the current program counter.  
     /// Does not set or read any registers before attempting to execute.  
     /// Will attempt to execute until an EXIT psuedo-instruction or an
-    /// unhandled exception is encountered. 
+    /// unhandled exception is encountered.
     pub fn exec(&mut self) -> Result<(), Error> {
-        self.start_time = Instant::now();
+        self.start_time = self.clock_cycles;
         loop {
             let temp_pc = self.reg.pc;
             if let Err(e) = self.exec_one() {
@@ -84,35 +80,41 @@ impl Core {
                     self.fault(temp_pc, &e);
                 }
             }
+            /*
             if let Some(time) = config::ARGS.time {
                 if self.start_time.elapsed() > Duration::from_secs_f32(time) {
                     info!("Terminating because the specified time has expired.");
                     break;
                 }
             }
+            */
         }
+        /*
         if config::ARGS.perf {
             self.report_perf()
         }
+        */
         Ok(())
     }
     /// Helper function for exec.  
     /// Wraps calls to exec_next and adds debug checks and interrupt processing.
-    fn exec_one(&mut self) -> Result<(), Error> {
-        let function_start = Instant::now();
-        let mut meta_start: Option<Instant> = None;
-        let mut expected_duration: Option<Duration> = None;
+    pub fn exec_one(&mut self) -> Result<(), Error> {
+        let _function_start = self.clock_cycles;
+        // let mut meta_start: Option<u64> = None;
+        let _expected_duration_cycles: Option<u64> = None;
         if config::debug() && self.pre_instruction_debug_check(self.reg.pc) {
             self.debug_cli()?;
         }
         let temp_pc = self.reg.pc;
         if !self.in_cwai && !self.in_sync {
             let outcome = self.exec_next(self.list_mode.is_none())?;
-            meta_start = Some(Instant::now());
+            // meta_start = Some(self.clock_cycles);
             // if paying attention to timing then track how long this instruction should have taken
+            /*
             expected_duration = self
                 .min_cycle
                 .and_then(|min| min.checked_mul(outcome.inst.flavor.detail.clk as u32));
+            */
             // check for meta instructions (interrupts, SYNC, CWAI, EXIT)
             if let Some(meta) = outcome.meta.as_ref() {
                 let it = meta.to_interrupt_type();
@@ -146,33 +148,35 @@ impl Core {
                 self.post_instruction_debug_check(temp_pc, &outcome);
             }
         }
+        /*
         if meta_start.is_none() {
-            meta_start = Some(Instant::now());
+            meta_start = Some(self.clock_cycles);
         }
+        */
         let mut irq;
         let mut firq = false;
         // check for work that needs to be done on hsync
         // (using hsync as the period at which to poll for pending interrupts
         // rather than checking between every instruction)
-        if self.hsync_prev.elapsed() >= HSYNC_PERIOD {
-            self.hsync_prev = Instant::now();
+        if self.clock_cycles - self.hsync_prev >= HSYNC_PERIOD_CYCLES {
+            self.hsync_prev = self.clock_cycles;
             // check for hardware firq
             {
-                let mut pia1 = self.pia1.lock().unwrap();
+                let mut pia1 = self.pia1.lock();
                 if self.cart_pending {
                     firq = pia1.cart_firq();
                 }
             }
             // check for hardware irq
             {
-                let mut pia0 = self.pia0.lock().unwrap();
+                let mut pia0 = self.pia0.lock();
                 irq = pia0.hsync_irq();
             }
             // if it's vsync time, then also check for vsync irq
-            if self.vsync_prev.elapsed() >= VSYNC_PERIOD {
-                self.vsync_prev = Instant::now();
+            if self.clock_cycles - self.vsync_prev >= VSYNC_PERIOD_CYCLES {
+                self.vsync_prev = self.clock_cycles;
                 {
-                    let mut pia0 = self.pia0.lock().unwrap();
+                    let mut pia0 = self.pia0.lock();
                     irq = irq || pia0.vsync_irq();
                 }
             }
@@ -196,12 +200,11 @@ impl Core {
                 }
             }
         }
-        // finally, if we're limiting CPU speed, then check to make sure we didn't execute this instruction too quickly
-        if let Some(remaining_time) = expected_duration.and_then(|m| m.checked_sub(function_start.elapsed())) {
-            let time = Instant::now();
-            while Instant::now() - time < remaining_time { /* spin because other sleep options are inconsistent */ }
+        /*
+        if let Some(ms) = meta_start {
+             self.meta_time += Duration::from_micros(self.clock_cycles - ms);
         }
-        self.meta_time += meta_start.unwrap().elapsed();
+        */
         Ok(())
     }
 
@@ -237,12 +240,12 @@ impl Core {
     }
     /// Sets the CC register and stack as appropriate and
     /// then sets PC to the vector for the given interrupt.
-    pub fn start_interrupt(&mut self, it: core::InterruptType) -> Result<(), Error> {
+    pub fn start_interrupt(&mut self, it: crate::cpu::InterruptType) -> Result<(), Error> {
         assert!(!self.in_sync);
         // info!("start_interrupt {:?}, vector {:04x}", it, it.vector());
         // if this is an IRQ then we need to push (almost) everything on the stack
         let mut entire = false;
-        use crate::core::InterruptType::*;
+        use crate::cpu::InterruptType::*;
         let mut if_mask_flags: u8 = 0;
         match it {
             Swi2 | Swi3 => {
@@ -287,14 +290,15 @@ impl Core {
     /// If list_mode.is_some() then the instruction is not evaluated and Outcome reflects
     /// the state prior to the instruction.
     pub fn exec_next(&mut self, commit: bool) -> Result<instructions::Outcome, Error> {
-        let mut start = Instant::now();
+        // let mut start = Instant::now();
         let mut inst = instructions::Instance::new(&self.reg, None);
         let mut op16: u16 = 0; // 16-bit representation of the opcode
         let mut live_ctx: registers::Set = self.reg;
 
         // get the base op code
         loop {
-            inst.buf[inst.size as usize] = self._read_u8(AccessType::Program, live_ctx.pc + inst.size, None)?;
+            inst.buf[inst.size as usize] =
+                self._read_u8(AccessType::Program, live_ctx.pc + inst.size, None)?;
             op16 |= inst.buf[inst.size as usize] as u16;
             inst.size += 1;
             if inst.size == 1 && instructions::is_high_byte_of_16bit_instruction(inst.buf[0]) {
@@ -324,15 +328,15 @@ impl Core {
         live_ctx.pc = self.checked_pc_add(live_ctx.pc, inst.size, &inst)?;
         let mut o = instructions::Outcome::new(inst, live_ctx);
         // track how long all this preparation took
-        self.prep_time += start.elapsed();
-        start = Instant::now();
+        // self.prep_time += start.elapsed();
+        // start = Instant::now();
 
         // evaluate the instruction if we're not in list mode
         if self.list_mode.is_none() {
             (o.inst.flavor.desc.eval)(self, &mut o)?;
         }
-        self.eval_time += start.elapsed();
-        start = Instant::now();
+        // self.eval_time += start.elapsed();
+        // start = Instant::now();
 
         // if caller wants to commit the changes and we're not in list mode then commit now
         if commit && self.list_mode.is_none() {
@@ -344,7 +348,7 @@ impl Core {
                 }
             }
         }
-        self.commit_time += start.elapsed();
+        // self.commit_time += start.elapsed();
 
         self.instruction_count += 1;
         self.clock_cycles += o.inst.flavor.detail.clk as u64;
@@ -354,7 +358,12 @@ impl Core {
     /// Returns Error::Runtime in the case of overflow.
     /// Otherwise, Ok.
     #[inline(always)]
-    fn checked_pc_add(&self, pc: u16, rhs: u16, inst: &instructions::Instance) -> Result<u16, Error> {
+    fn checked_pc_add(
+        &self,
+        pc: u16,
+        rhs: u16,
+        _inst: &instructions::Instance,
+    ) -> Result<u16, Error> {
         // avoiding ok_or and ok_or_else to increase performance
         // ok_or would invoke the runtime_err! macro every time (regardless of result)
         // ok_or_else seems to be slightly slower than manually checking with if/else
@@ -370,12 +379,14 @@ impl Core {
         }
     }
 
-    /// Determine the effective address for the instruction, update the instruction size, 
+    /// Determine the effective address for the instruction, update the instruction size,
     /// modify any registers that are changed by the addressing mode (e.g. ,X+),
     /// and provide a disassembled string representing the operand (if help_humans() == true).
     /// Changes are reflected in the provided inst and live_ctx objects.
     fn process_addressing_mode(
-        &self, inst: &mut instructions::Instance, live_ctx: &mut registers::Set,
+        &self,
+        inst: &mut instructions::Instance,
+        live_ctx: &mut registers::Set,
     ) -> Result<(), Error> {
         match inst.flavor.mode {
             instructions::AddressingMode::Immediate => {
@@ -388,9 +399,10 @@ impl Core {
                     inst.operand = Some(match inst.flavor.desc.pbt {
                         instructions::PBT::NA => format!("#${}", data),
                         instructions::PBT::TransferExchange => TEPostByte::to_string(data.u8()),
-                        instructions::PBT::PushPull => {
-                            PPPostByte::to_string(data.u8(), inst.flavor.desc.reg == registers::Name::U)
-                        }
+                        instructions::PBT::PushPull => PPPostByte::to_string(
+                            data.u8(),
+                            inst.flavor.desc.reg == registers::Name::U,
+                        ),
                     });
                 }
             }
@@ -461,7 +473,8 @@ impl Core {
                 match pb & 0x8f {
                     0..=0b11111 => {
                         // ,R + 5 bit offset
-                        let offset = ((pb & 0b11111) | if pb & 0b10000 != 0 { 0b11100000 } else { 0 }) as i8;
+                        let offset =
+                            ((pb & 0b11111) | if pb & 0b10000 != 0 { 0b11100000 } else { 0 }) as i8;
                         let (addr, _) = u16::overflowing_add(*ir_ptr, offset as u16);
                         inst.ea = addr;
                         if config::help_humans() {
@@ -474,8 +487,11 @@ impl Core {
                             return Err(Error::new(
                                 ErrorKind::Syntax,
                                 Some(self.reg),
-                                format!("Illegal indirect indexed addressing mode [,R+] at {:04X}", self.reg.pc)
-                                    .as_str(),
+                                format!(
+                                    "Illegal indirect indexed addressing mode [,R+] at {:04X}",
+                                    self.reg.pc
+                                )
+                                .as_str(),
                             ));
                         }
                         inst.ea = *ir_ptr;
@@ -500,8 +516,11 @@ impl Core {
                             return Err(Error::new(
                                 ErrorKind::Syntax,
                                 Some(self.reg),
-                                format!("Illegal indirect indexed addressing mode [,-R] at {:04X}", self.reg.pc)
-                                    .as_str(),
+                                format!(
+                                    "Illegal indirect indexed addressing mode [,-R] at {:04X}",
+                                    self.reg.pc
+                                )
+                                .as_str(),
                             ));
                         }
                         let (r, _) = (*ir_ptr).overflowing_sub(1);
@@ -546,7 +565,9 @@ impl Core {
                     // 0b10000111 => {} invalid
                     0b10001000 => {
                         // EA = ,R + 8 bit offset
-                        let offset = self._read_u8(AccessType::Program, live_ctx.pc + inst.size, None)? as i8;
+                        let offset =
+                            self._read_u8(AccessType::Program, live_ctx.pc + inst.size, None)?
+                                as i8;
                         inst.size += 1;
                         let (addr, _) = u16::overflowing_add(*ir_ptr, offset as u16);
                         inst.ea = addr;
@@ -556,7 +577,9 @@ impl Core {
                     }
                     0b10001001 => {
                         // ,R + 16 bit offset
-                        let offset = self._read_u16(AccessType::Program, live_ctx.pc + inst.size, None)? as i16;
+                        let offset =
+                            self._read_u16(AccessType::Program, live_ctx.pc + inst.size, None)?
+                                as i16;
                         inst.size += 2;
                         let (addr, _) = u16::overflowing_add(*ir_ptr, offset as u16);
                         inst.ea = addr;
@@ -575,7 +598,9 @@ impl Core {
                     }
                     0b10001100 => {
                         // ,PC + 8 bit offset
-                        let offset = self._read_u8(AccessType::Program, live_ctx.pc + inst.size, None)? as i8;
+                        let offset =
+                            self._read_u8(AccessType::Program, live_ctx.pc + inst.size, None)?
+                                as i8;
                         inst.size += 1;
                         // Note: effective address is relative to the program counter's NEW value (the address of the next instruction)
                         let (pc, _) = u16::overflowing_add(live_ctx.pc, inst.size);
@@ -587,7 +612,9 @@ impl Core {
                     }
                     0b10001101 => {
                         // ,PC + 16 bit offset
-                        let offset = self._read_u16(AccessType::Program, live_ctx.pc + inst.size, None)? as i16;
+                        let offset =
+                            self._read_u16(AccessType::Program, live_ctx.pc + inst.size, None)?
+                                as i16;
                         inst.size += 2;
                         // Note: effective address is relative to the program counter's NEW value (the address of the next instruction)
                         let (pc, _) = u16::overflowing_add(live_ctx.pc, inst.size);
@@ -599,7 +626,8 @@ impl Core {
                     }
                     0b10001111 => {
                         // EA = [,address]
-                        inst.ea = self._read_u16(AccessType::Program, live_ctx.pc + inst.size, None)?;
+                        inst.ea =
+                            self._read_u16(AccessType::Program, live_ctx.pc + inst.size, None)?;
                         if config::help_humans() {
                             inst.operand = Some(format!("[{:04X}]", inst.ea));
                         }

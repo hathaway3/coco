@@ -17,7 +17,8 @@ impl BinaryObject {
     pub fn to_bytes(&self, buf: &mut [u8]) -> u16 {
         let mut bytes = 0;
         if let Some(data) = self.data.as_ref() {
-            data.iter().for_each(|&u| bytes += u.get_as_bytes(&mut buf[bytes..]));
+            data.iter()
+                .for_each(|&u| bytes += u.get_as_bytes(&mut buf[bytes..]));
         }
         bytes as u16
     }
@@ -44,16 +45,27 @@ impl fmt::Display for BinaryObject {
 }
 
 /// An ObjectProducer is a struct that is capable of producing a BinaryObject.
-pub trait ObjectProducer: std::fmt::Debug + std::fmt::Display {
+pub trait ObjectProducer: core::fmt::Debug + core::fmt::Display {
     // if this object has a static address (e.g. if the object is an ORG) then it is reported here (only after build!)
-    fn static_address(&self, _: &dyn LabelResolver) -> Result<Option<u16>, Error> { Ok(None) }
+    fn static_address(&self, _: &dyn LabelResolver) -> Result<Option<u16>, Error> {
+        Ok(None)
+    }
     // given an address and label definitions, provide the upper bound on the size of this object
-    fn current_size(&self, _: u16, _: &dyn LabelResolver) -> Result<u16, Error> { Ok(0u16) }
+    fn current_size(&self, _: u16, _: &dyn LabelResolver) -> Result<u16, Error> {
+        Ok(0u16)
+    }
     // given an address and label definitions, produce this object
-    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, dp_dirty: bool) -> Result<&BinaryObject, Error>;
+    fn build(
+        &mut self,
+        addr: u16,
+        lr: &dyn LabelResolver,
+        dp_dirty: bool,
+    ) -> Result<&BinaryObject, Error>;
 
     // returns true if the object results in potential DP register change
-    fn changes_dp(&self) -> bool { false }
+    fn changes_dp(&self) -> bool {
+        false
+    }
 
     // get a ref to this producer's object (if there is one)
     fn bob_ref(&self) -> Option<&BinaryObject>;
@@ -73,7 +85,11 @@ pub struct Instruction {
 }
 impl Instruction {
     pub fn try_new(
-        id: &'static instructions::Descriptor, od: OperandDescriptor, addr: u16, lr: &dyn LabelResolver, dp_dirty: bool,
+        id: &'static instructions::Descriptor,
+        od: OperandDescriptor,
+        addr: u16,
+        lr: &dyn LabelResolver,
+        dp_dirty: bool,
     ) -> Result<Self, Error> {
         // translate from the assembler's addressing mode to the runtime addressing mode
         let mut dp_changed = false;
@@ -119,10 +135,9 @@ impl Instruction {
                 // if it doesn't work then we'll have to change at build time
                 } else if !dp_dirty
                     && !od.force_mode
-                    && od
-                        .value
-                        .as_ref()
-                        .map_or(false, |v| v.eval(lr, addr, false).map_or(false, |u| u.u16() < 0x100))
+                    && od.value.as_ref().map_or(false, |v| {
+                        v.eval(lr, addr, false).map_or(false, |u| u.u16() < 0x100)
+                    })
                 {
                     trying_direct = true;
                     AddressingMode::Direct
@@ -160,7 +175,11 @@ impl Instruction {
         ))
     }
     pub fn _build_indexed(
-        &self, addr: u16, mut val: u8u16, data: &mut Vec<u8u16>, indirect: bool,
+        &self,
+        addr: u16,
+        mut val: u8u16,
+        data: &mut Vec<u8u16>,
+        indirect: bool,
     ) -> Result<(), Error> {
         match self.od.mode {
             AddressingMode::Register => {
@@ -168,16 +187,20 @@ impl Instruction {
                 assert!(regs.len() > 1);
 
                 if regs.len() != 2 {
-                    return Err(syntax_err!("two registers required for register offset addressing"));
+                    return Err(syntax_err!(
+                        "two registers required for register offset addressing"
+                    ));
                 }
                 let mut post_byte = match regs[0].as_str() {
                     "A" => 0b10000110,
                     "B" => 0b10000101,
                     "D" => 0b10001011,
                     _ => {
-                        return Err(syntax_err!(
-                            format!("register \"{}\" invalid as offset", regs[0]).as_str()
-                        ));
+                        return Err(syntax_err!(format!(
+                            "register \"{}\" invalid as offset",
+                            regs[0]
+                        )
+                        .as_str()));
                     }
                 };
                 self._add_index_register_to_postbyte(&mut post_byte, regs[1].as_str())?;
@@ -269,7 +292,9 @@ impl Instruction {
             }
             AddressingMode::Extended => {
                 // our object is just a fixed post-byte and a 16-bit address
-                data.push(u8u16::u8(0b10011111 | if indirect { 0b00010000 } else { 0 }));
+                data.push(u8u16::u8(
+                    0b10011111 | if indirect { 0b00010000 } else { 0 },
+                ));
                 data.push(u8u16::u16(val.u16()));
             }
             _ => unreachable!(),
@@ -284,7 +309,9 @@ impl Instruction {
             "S" => 0b01100000,
             "PC" | "PCR" => 0b00001100,
             _ => {
-                return Err(syntax_err!(format!("invalid index register \"{}\"", reg).as_str()));
+                return Err(syntax_err!(
+                    format!("invalid index register \"{}\"", reg).as_str()
+                ));
             }
         };
         Ok(())
@@ -353,7 +380,12 @@ impl ObjectProducer for Instruction {
     /// E.g., the assembler would see operand "A,X" as AddressingMode::Register but the CPU will
     /// see it as AddressingMode::Indexed with a postbyte that describes the register offset
     ///
-    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, dp_dirty: bool) -> Result<&BinaryObject, Error> {
+    fn build(
+        &mut self,
+        addr: u16,
+        lr: &dyn LabelResolver,
+        dp_dirty: bool,
+    ) -> Result<&BinaryObject, Error> {
         let mut val = u8u16::u8(0);
         let mut sval = u8u16::u8(0);
         let mut data: Vec<u8u16> = Vec::new();
@@ -388,7 +420,8 @@ impl ObjectProducer for Instruction {
         if !dp_dirty
             && !self.od.force_mode
             && (val.u16() < 0x100)
-            && (self.flavor.mode == AddressingMode::Extended || self.flavor.mode == AddressingMode::Direct)
+            && (self.flavor.mode == AddressingMode::Extended
+                || self.flavor.mode == AddressingMode::Direct)
         {
             if let Some(detail) = self.id.get_mode_detail(AddressingMode::Direct) {
                 self.flavor = Flavor {
@@ -429,7 +462,10 @@ impl ObjectProducer for Instruction {
             // or we already would have done so above, so here we just need to convert val to 16-bit
             val = u8u16::u16(val.u16());
         } else if working_size != min_size && self.flavor.mode != AddressingMode::Relative {
-            if (self.flavor.mode == AddressingMode::Immediate) && (min_size == working_size + 1) && (val.size() == 1) {
+            if (self.flavor.mode == AddressingMode::Immediate)
+                && (min_size == working_size + 1)
+                && (val.size() == 1)
+            {
                 // this is a 16-bit immediate mode instruction, so we need a 16=bit value
                 val = u8u16::u16(val.u16());
             } else {
@@ -456,7 +492,9 @@ impl ObjectProducer for Instruction {
         // note that this is matching on self.flavor.mode (the mode the CPU will see at run time)
         match self.flavor.mode {
             AddressingMode::Immediate => self._build_immediate(val, &mut data)?,
-            AddressingMode::Indexed => self._build_indexed(addr, val, &mut data, self.od.indirect)?,
+            AddressingMode::Indexed => {
+                self._build_indexed(addr, val, &mut data, self.od.indirect)?
+            }
             AddressingMode::Inherent => {
                 // there is no more to do in this case; the op code is the entire object
             }
@@ -474,17 +512,27 @@ impl ObjectProducer for Instruction {
                     // expecting a signed, 8-bit relative offset here
                     let n = diff as i16;
                     if !(-128..=127).contains(&n) {
+                        /*
                         if config::ARGS.lbr_disable {
                             return Err(syntax_err!("relative offset is out of bounds"));
                         } else {
-                            verbose_println!("Converting Bxx to LBxx (pc:{:X},addr:{:x},diff:{})", pc, val.u16(), n);
+                        */
+                        if true {
+                            verbose_println!(
+                                "Converting Bxx to LBxx (pc:{:X},addr:{:x},diff:{})",
+                                pc,
+                                val.u16(),
+                                n
+                            );
                             // convert this branch instruction to the "long" version
                             let new_name = "L".to_string() + self.id.name;
-                            if let Some(desc) = instructions::name_to_descriptor(new_name.as_str()) {
+                            if let Some(desc) = instructions::name_to_descriptor(new_name.as_str())
+                            {
                                 // update the significant fields and then call .build() again
                                 self.id = desc;
                                 self.flavor.desc = desc;
-                                self.flavor.detail = desc.get_mode_detail(AddressingMode::Relative).unwrap();
+                                self.flavor.detail =
+                                    desc.get_mode_detail(AddressingMode::Relative).unwrap();
                                 return self.build(addr, lr, dp_dirty);
                             }
                         }
@@ -511,7 +559,9 @@ impl ObjectProducer for Instruction {
         Ok(&self.bob)
     }
 
-    fn changes_dp(&self) -> bool { self.dp_changed }
+    fn changes_dp(&self) -> bool {
+        self.dp_changed
+    }
 }
 /// Builds a BinaryObject given the operand of an RMB (Reserve Memory Bytes) statement.
 #[derive(Debug)]
@@ -543,7 +593,12 @@ impl ObjectProducer for Rmb {
         }
         Some(&self.bob)
     }
-    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, _: bool) -> Result<&BinaryObject, Error> {
+    fn build(
+        &mut self,
+        addr: u16,
+        lr: &dyn LabelResolver,
+        _: bool,
+    ) -> Result<&BinaryObject, Error> {
         // if this value node can't be evaluated then it's invalid
         let u = self.node.eval(lr, addr, false)?.u16();
         self.size = Some(u);
@@ -606,7 +661,12 @@ impl ObjectProducer for Fxb {
         Ok(self.bytes_per_node * self.nodes.len() as u16)
     }
 
-    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, _: bool) -> Result<&BinaryObject, Error> {
+    fn build(
+        &mut self,
+        addr: u16,
+        lr: &dyn LabelResolver,
+        _: bool,
+    ) -> Result<&BinaryObject, Error> {
         // Fxb renders one or more bytes at the current address
         let mut data = Vec::new();
         for node in &self.nodes {
@@ -630,7 +690,11 @@ impl ObjectProducer for Fxb {
 }
 impl fmt::Display for Fxb {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let op = if self.bytes_per_node == 1 { "FCB" } else { "FDB" };
+        let op = if self.bytes_per_node == 1 {
+            "FCB"
+        } else {
+            "FDB"
+        };
         write!(f, "{} {}", op, self.nodes[0])?;
         for n in &self.nodes[1..] {
             write!(f, ", {}", n)?;
@@ -672,7 +736,12 @@ impl ObjectProducer for Org {
         }
         Some(&self.bob)
     }
-    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, _: bool) -> Result<&BinaryObject, Error> {
+    fn build(
+        &mut self,
+        addr: u16,
+        lr: &dyn LabelResolver,
+        _: bool,
+    ) -> Result<&BinaryObject, Error> {
         // if this value node can't be evaluated then it's invalid
         self.bob.addr = self.node.eval(lr, addr, false)?.u16();
         self.built = true;
@@ -680,7 +749,9 @@ impl ObjectProducer for Org {
     }
 }
 impl fmt::Display for Org {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "ORG {}", self.node) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ORG {}", self.node)
+    }
 }
 /// Builds a BinaryObject given the operand of an FCC statement.
 #[derive(Debug)]
@@ -722,5 +793,7 @@ impl ObjectProducer for Fcc {
     }
 }
 impl fmt::Display for Fcc {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "FCC {}", self.source) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "FCC {}", self.source)
+    }
 }

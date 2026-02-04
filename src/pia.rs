@@ -1,3 +1,6 @@
+use super::*;
+use spin::Mutex;
+
 pub trait Pia {
     fn read(&mut self, reg_num: usize) -> u8;
     fn write(&mut self, reg_num: usize, data: u8);
@@ -21,7 +24,9 @@ struct PiaSide {
 
 #[allow(unused)]
 impl PiaSide {
-    fn manual_c2_trigger(&self) -> bool { self.cr & 0x30 == 0x30 }
+    fn manual_c2_trigger(&self) -> bool {
+        self.cr & 0x30 == 0x30
+    }
     fn write_control(&mut self, b: u8) {
         // bits 6 & 7 are read-only
         self.cr = (b & 0x3f) | (self.cr & 0xc0);
@@ -37,7 +42,9 @@ impl PiaSide {
         self.cr &= 0x3f;
         b
     }
-    fn pr_selected(&self) -> bool { self.cr & 4 == 4 }
+    fn pr_selected(&self) -> bool {
+        self.cr & 4 == 4
+    }
     fn write(&mut self, index: usize, b: u8) {
         if index & 1 == 1 {
             self.write_control(b)
@@ -113,48 +120,13 @@ impl PiaSide {
     }
 }
 
-use std::{
-    collections::HashMap,
-    sync::{mpsc, Arc, Mutex},
-};
-
-/// Keyboard map for coco (from [worldofdragon.org](https://worldofdragon.org/index.php?title=Keyboard))
-///       LSB              $FF02                    MSB
-///     | PB0   PB1   PB2   PB3   PB4   PB5   PB6   PB7 <- column
-/// ----|----------------------------------------------
-/// PA0 |   @     A     B     C     D     E     F     G    LSB
-/// PA1 |   H     I     J     K     L     M     N     O     $
-/// PA2 |   P     Q     R     S     T     U     V     W     F
-/// PA3 |   X     Y     Z    Up  Down  Left Right Space     F
-/// PA4 |   0     1!    2"    3#    4$    5%    6&    7'    0
-/// PA5 |   8(    9)    :*    ;+    ,<    -=    .>    /?    0
-/// PA6 | ENT   CLR   BRK   N/C   N/C   N/C   N/C  SHFT
-/// PA7 - Comparator input                                 MSB
-///  ^
-///  |
-/// row
-///
-/// The color computer keyboard was setup differently than a standard, modern US keyboard.
-/// The following mappings are required (from modern US keyboard to coco key matrix):
-/// [a single modern key maps to one or more different coco keys]
-///    esc             --> BRK       == (6,2)
-///    home            --> CLR       == (6,1)
-///    bkspc           --> Left      == (3,5)
-///    '''             --> shift-'7' == [(6,7),(4,7)]
-///    '='             --> shift-'-' == [(6,7),(5,5)]
-/// [a shifted modern key maps to one or more different coco keys]
-///    '@' (shift-'2') --> '@'       == (0,0)
-///    ':' (shift-';') --> ':'       == (5,2)
-///    '"' (shift-''') --> shift-'2' == [(6,7),(4,2)]
-///    '&' (shift-'7') --> shift-'6' == [(6,7),(4,6)]
-///    '*' (shift-'8') --> shift-':' == [(6,7),(5,2)]
-///    '(' (shift-'9') --> shift-'8' == [(6,7),(5,0)]
-///    ')' (shift-'0') --> shift-'9' == [(6,7),(5,1)]
-///    '+' (shift-'=') --> shift-';' == [(6,7),(5,3)]
-///
+/*
 use minifb::{Key, MouseButton, MouseMode};
+*/
 
-use crate::{sound::AudioSample, vdg};
+// use crate::vdg;
+
+/*
 #[derive(Debug)]
 struct KeyMap {
     from: Key,
@@ -194,12 +166,16 @@ const KEY_MATRIX: &[[minifb::Key;8];8] = &[
     [Key::Enter, Key::Home /* CLR */, Key::Escape /* BRK */, Key::Unknown, Key::Unknown, Key::Unknown, Key::Unknown, Key::RightShift],
     [Key::Unknown, Key::Unknown, Key::Unknown, Key::Unknown, Key::Unknown, Key::Unknown, Key::Unknown, Key::Unknown],
 ];
+*/
+
 #[derive(Debug)]
 pub struct Pia0 {
     ab: [PiaSide; 2],
     col: [u8; 8],
-    direct_map: HashMap<minifb::Key, Vec<(usize, usize)>>,
-    shift_map: HashMap<minifb::Key, Vec<(usize, usize)>>,
+    /*
+    direct_map: BTreeMap<minifb::Key, Vec<(usize, usize)>>,
+    shift_map: BTreeMap<minifb::Key, Vec<(usize, usize)>>,
+    */
     joy_x: u8,
     joy_y: u8,
     joy_sw_1: bool,
@@ -228,7 +204,7 @@ impl Pia for Pia0 {
             // This is the only reason we need a reference to pia1 here.
             // We must get the latest value and can't use any kind of caching.
             let dac = {
-                let mut pia1 = self.pia1.lock().unwrap();
+                let mut pia1 = self.pia1.lock();
                 pia1.read(0) >> 2
             };
             if dac > joy_val {
@@ -246,7 +222,7 @@ impl Pia for Pia0 {
         self.ab[(i >> 1) & 1].write(i, data);
         match i {
             // if write is to one of the control registers then check DAC mux bits
-            1 | 3 => self.pia1.lock().unwrap().set_dac_mux(self.ab[0].c2, self.ab[1].c2),
+            1 | 3 => self.pia1.lock().set_dac_mux(self.ab[0].c2, self.ab[1].c2),
             // if write is to the b-side data register, then it's related to keyboard
             2 => self.strobe_keyboard(),
             _ => (),
@@ -256,7 +232,8 @@ impl Pia for Pia0 {
 impl Pia0 {
     #[allow(clippy::new_without_default)]
     pub fn new(pia1: Arc<Mutex<Pia1>>) -> Self {
-        let mut direct_map: HashMap<minifb::Key, Vec<(usize, usize)>> = HashMap::new();
+        /*
+        let mut direct_map: BTreeMap<minifb::Key, Vec<(usize, usize)>> = BTreeMap::new();
         // add our KEY_MATRIX entries to the direct_map
         #[allow(clippy::needless_range_loop)]
         for row in 0..8usize {
@@ -269,15 +246,18 @@ impl Pia0 {
             direct_map.insert(m.from, m.to.to_vec());
         });
         // now populate the shift_map with entries from SHIFT_ONE_TO_N
-        let mut shift_map: HashMap<minifb::Key, Vec<(usize, usize)>> = HashMap::new();
+        let mut shift_map: BTreeMap<minifb::Key, Vec<(usize, usize)>> = BTreeMap::new();
         SHIFT_ONE_TO_N.iter().for_each(|m| {
             shift_map.insert(m.from, m.to.to_vec());
         });
+        */
         Pia0 {
             ab: [PiaSide::default(), PiaSide::default()],
             col: [0xff; 8],
+            /*
             direct_map,
             shift_map,
+            */
             joy_x: 0x1f,
             joy_y: 0x1f,
             joy_sw_1: false,
@@ -285,6 +265,7 @@ impl Pia0 {
             pia1,
         }
     }
+    /*
     // update is called periodically to allow for updates of keyboard and joystick state
     pub fn update(&mut self, w: &minifb::Window) {
         self.update_keyboard(w);
@@ -297,7 +278,7 @@ impl Pia0 {
             self.joy_y = ((255.0 * (mouse.1 / vdg::SCREEN_DIM_Y as f32)).round() as u8) >> 2;
             self.joy_sw_1 = w.get_mouse_down(MouseButton::Left);
             self.joy_sw_2 = w.get_mouse_down(MouseButton::Right);
-        } 
+        }
     }
     fn update_keyboard(&mut self, w: &minifb::Window) {
         let mut coords: Vec<(usize, usize)> = Vec::new();
@@ -329,6 +310,7 @@ impl Pia0 {
         }
         self.strobe_keyboard()
     }
+    */
     pub fn strobe_keyboard(&mut self) {
         // strobe the keyboard based on side B output
         let mut com = 0u8;
@@ -370,36 +352,44 @@ impl Pia0 {
 #[derive(Debug)]
 pub struct Pia1 {
     ab: [PiaSide; 2],
+    /*
     sndr: mpsc::Sender<AudioSample>,
+    */
     sound_enabled: bool,
     dac_sel_a: bool,
     dac_sel_b: bool,
     last_bit_sound: bool,
 }
 impl Pia for Pia1 {
-    fn read(&mut self, reg_num: usize) -> u8 { self.ab[(reg_num >> 1) & 1].read(reg_num) }
+    fn read(&mut self, reg_num: usize) -> u8 {
+        self.ab[(reg_num >> 1) & 1].read(reg_num)
+    }
     fn write(&mut self, reg_num: usize, data: u8) {
         let i = reg_num % 4;
         self.ab[(i >> 1) & 1].write(reg_num, data);
-        
+
         // handle pia1-specific functionality
         match i {
             0 if self.sound_enabled && !self.dac_sel_a && !self.dac_sel_b => {
                 // this is a write to the DAC and sound is enabled so send the data to the audio device
                 // convert 6-bit amplitude into f32 value between -1.0 and +1.0
-                let fdata = ((self.ab[0].read_output() >> 2) as f32 - 31.0) / 32.0;
+                let _fdata = ((self.ab[0].read_output() >> 2) as f32 - 31.0) / 32.0;
+                /*
                 self.sndr
                     .send(AudioSample::new(fdata))
                     .expect("error sending audio sample to channel");
+                */
             }
             2 => {
                 // check for single-bit sound in pia1-b data register
                 let bit = self.ab[1].read_output() & 2 == 2;
                 if bit != self.last_bit_sound {
-                    let fdata = if bit { 0.5 } else { -0.5 };
+                    let _fdata = if bit { 0.5 } else { -0.5 };
+                    /*
                     self.sndr
                         .send(AudioSample::new(fdata))
                         .expect("error sending single bit audio to channel")
+                    */
                 }
                 self.last_bit_sound = bit;
             }
@@ -409,10 +399,12 @@ impl Pia for Pia1 {
     }
 }
 impl Pia1 {
-    pub fn new(sndr: mpsc::Sender<AudioSample>) -> Self {
+    pub fn new(/* sndr: mpsc::Sender<AudioSample> */) -> Self {
         Pia1 {
             ab: [PiaSide::default(), PiaSide::default()],
+            /*
             sndr,
+            */
             sound_enabled: false,
             dac_sel_a: false,
             dac_sel_b: false,
@@ -420,7 +412,9 @@ impl Pia1 {
         }
     }
     /// Returns the following bits as a byte: 0, 0, 0, G/!A, GM2, GM1, GM0, CSS
-    pub fn get_vdg_bits(&self) -> u8 { (self.ab[1].read_data() >> 3) & 0x1f }
+    pub fn get_vdg_bits(&self) -> u8 {
+        (self.ab[1].read_data() >> 3) & 0x1f
+    }
     /// Lets PIA1 know that a cartridge was inserted.
     /// Returns true if FIRQ is signalled
     pub fn cart_firq(&mut self) -> bool {

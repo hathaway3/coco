@@ -9,3 +9,5 @@
 *.wav
 .DS_Store
 .vscode
+*.uf2
+

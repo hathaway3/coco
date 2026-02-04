@@ -1,4 +1,7 @@
 #![allow(unused)]
+use super::*;
+use spin::{Mutex, RwLock};
+
 /// Simple interface for reading and writing the Synchronous Address Multiplexer
 /// Sam Control Register bit definitions:
 /// Bits  | Usage
@@ -16,13 +19,27 @@ pub struct Sam {
 
 impl Sam {
     #[allow(clippy::new_without_default)]
-    pub fn new() -> Self { Sam { config: 0 } }
-    pub fn get_raw_config(&self) -> u16 { self.config }
-    pub fn get_vdg_bits(&self) -> u8 { VDG_MODE.from_config(self.config) as u8 }
-    pub fn get_vram_start(&self) -> u16 { 512 * VRAM_START.from_config(self.config) }
-    pub fn get_page_switch(&self) -> bool { (PAGE_SWITCH.from_config(self.config)) != 0 }
-    pub fn get_mpu_rate(&self) -> u8 { MPU_RATE.from_config(self.config)as u8 }
-    pub fn get_map_type(&self) -> bool { MAP_TYPE.from_config(self.config) != 0 }
+    pub fn new() -> Self {
+        Sam { config: 0 }
+    }
+    pub fn get_raw_config(&self) -> u16 {
+        self.config
+    }
+    pub fn get_vdg_bits(&self) -> u8 {
+        VDG_MODE.from_config(self.config) as u8
+    }
+    pub fn get_vram_start(&self) -> u16 {
+        512 * VRAM_START.from_config(self.config)
+    }
+    pub fn get_page_switch(&self) -> bool {
+        (PAGE_SWITCH.from_config(self.config)) != 0
+    }
+    pub fn get_mpu_rate(&self) -> u8 {
+        MPU_RATE.from_config(self.config) as u8
+    }
+    pub fn get_map_type(&self) -> bool {
+        MAP_TYPE.from_config(self.config) != 0
+    }
     pub fn write(&mut self, index: usize) {
         if index >= 32 {
             panic!()
@@ -33,7 +50,7 @@ impl Sam {
         } else {
             self.config |= val;
         }
-        verbose_println!("SAM config={:016b}",self.config);
+        verbose_println!("SAM config={:016b}", self.config);
     }
 }
 
@@ -44,7 +61,9 @@ struct SamBits {
 #[allow(clippy::wrong_self_convention)]
 impl SamBits {
     #[inline(always)]
-    fn from_config(&self, config: u16) -> u16 { (config & self.mask) >> self.offset }
+    fn from_config(&self, config: u16) -> u16 {
+        (config & self.mask) >> self.offset
+    }
 }
 const VDG_MODE: SamBits = SamBits {
     mask: 0x0007,

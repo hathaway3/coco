@@ -1,10 +1,14 @@
+#![allow(unused)]
 use super::instructions::AddressingMode;
+#[cfg(not(target_os = "none"))]
 use super::test::{AddrOrVal, RegOrAddr, TestCriterion};
 
 use super::*;
 
-use regex::Regex;
-use std::{iter::Peekable, str::Chars, vec::IntoIter};
+// use regex::Regex;
+use alloc::vec::IntoIter;
+use core::iter::Peekable;
+use core::str::Chars;
 
 type TokenIter = Peekable<IntoIter<Token>>;
 
@@ -29,7 +33,9 @@ pub enum TokenType {
     RAngle,
 }
 impl From<Token> for TokenType {
-    fn from(item: Token) -> Self { item.ttype }
+    fn from(item: Token) -> Self {
+        item.ttype
+    }
 }
 
 /// The first step in parsing an operand is tokenization. This struct holds
@@ -51,13 +57,19 @@ impl Token {
             _ => self.raw.clone(),
         }
     }
-    pub fn new(ttype: TokenType, raw: String, value: Option<u8u16>) -> Self { Token { ttype, raw, value } }
+    pub fn new(ttype: TokenType, raw: String, value: Option<u8u16>) -> Self {
+        Token { ttype, raw, value }
+    }
 }
-impl std::cmp::PartialEq<TokenType> for Token {
-    fn eq(&self, other: &TokenType) -> bool { self.ttype == *other }
+impl core::cmp::PartialEq<TokenType> for Token {
+    fn eq(&self, other: &TokenType) -> bool {
+        self.ttype == *other
+    }
 }
-impl std::cmp::PartialEq<Token> for TokenType {
-    fn eq(&self, other: &Token) -> bool { *self == other.ttype }
+impl core::cmp::PartialEq<Token> for TokenType {
+    fn eq(&self, other: &Token) -> bool {
+        *self == other.ttype
+    }
 }
 
 use fmt::Display;
@@ -84,7 +96,12 @@ pub struct ValueNode {
     right: Option<Box<ValueNode>>,
 }
 impl ValueNode {
-    pub fn new(val_or_op: Token, negate: bool, left: Option<ValueNode>, right: Option<ValueNode>) -> Self {
+    pub fn new(
+        val_or_op: Token,
+        negate: bool,
+        left: Option<ValueNode>,
+        right: Option<ValueNode>,
+    ) -> Self {
         ValueNode {
             token: val_or_op,
             negate,
@@ -123,7 +140,12 @@ impl ValueNode {
                     ))
                 }
             }
-            TokenType::Add | TokenType::Sub | TokenType::Star | TokenType::Div | TokenType::Mod | TokenType::Pow => {
+            TokenType::Add
+            | TokenType::Sub
+            | TokenType::Star
+            | TokenType::Div
+            | TokenType::Mod
+            | TokenType::Pow => {
                 if let Some(left) = &self.left {
                     if let Some(right) = &self.right {
                         return self._eval_binary(lr, addr, signed, left, right);
@@ -136,7 +158,11 @@ impl ValueNode {
                 Err(Error::new(
                     ErrorKind::Syntax,
                     None,
-                    format!("missing operand(s) for binary operation \"{}\"", self.token.clean()).as_str(),
+                    format!(
+                        "missing operand(s) for binary operation \"{}\"",
+                        self.token.clean()
+                    )
+                    .as_str(),
                 ))
             }
             _ => Err(Error::new(
@@ -147,7 +173,12 @@ impl ValueNode {
         }
     }
     fn _eval_binary(
-        &self, lr: &dyn LabelResolver, addr: u16, signed: bool, left: &ValueNode, right: &ValueNode,
+        &self,
+        lr: &dyn LabelResolver,
+        addr: u16,
+        signed: bool,
+        left: &ValueNode,
+        right: &ValueNode,
     ) -> Result<u8u16, Error> {
         let lhs = left.eval(lr, addr, signed)?;
         let rhs = right.eval(lr, addr, signed)?;
@@ -290,7 +321,12 @@ impl Display for OperandDescriptor {
                 }
             }
             AddressingMode::Offset => {
-                write!(f, "{}, {}", value, self.regs.as_ref().unwrap().first().unwrap())?;
+                write!(
+                    f,
+                    "{}, {}",
+                    value,
+                    self.regs.as_ref().unwrap().first().unwrap()
+                )?;
             }
             _ => {}
         }
@@ -301,13 +337,15 @@ impl Display for OperandDescriptor {
     }
 }
 /// The container for parsing methods.
-pub struct Parser {
-    re_registers: Regex,
-}
+pub struct Parser {}
 impl Parser {
     pub fn new() -> Self {
-        Parser {
-            re_registers: Regex::new(r"(?i)^(A|B|CC|DP|D|PC|PCR|S|U|X|Y)$").unwrap(),
+        Parser {}
+    }
+    fn is_register(&self, s: &str) -> bool {
+        match s.to_uppercase().as_str() {
+            "A" | "B" | "CC" | "DP" | "D" | "PC" | "PCR" | "S" | "U" | "X" | "Y" => true,
+            _ => false,
         }
     }
     /// Parses an operand and returns an OperandDescriptor on success.
@@ -372,7 +410,11 @@ impl Parser {
                 self.parse_opexpr(&mut token_iter, &mut od)?;
                 // check to make sure there is a TokenType::RBracket at the end of token_iter
                 // also consume the token (whether or not it's the right one)
-                if token_iter.next().filter(|t| t.ttype == TokenType::RBracket).is_none() {
+                if token_iter
+                    .next()
+                    .filter(|t| t.ttype == TokenType::RBracket)
+                    .is_none()
+                {
                     return Err(Error::new(ErrorKind::Syntax, None, "closing ']' not found"));
                 }
             }
@@ -396,7 +438,11 @@ impl Parser {
     /// ```
     ///
     /// AddressingMode:  Extended |    Offset    | Register |  IncDec
-    fn parse_opexpr(&self, token_iter: &mut TokenIter, od: &mut OperandDescriptor) -> Result<(), Error> {
+    fn parse_opexpr(
+        &self,
+        token_iter: &mut TokenIter,
+        od: &mut OperandDescriptor,
+    ) -> Result<(), Error> {
         // look for: valexpr | valexpr, reg
         // Note: including TokenType::Sub here for negative offsets; including TokenType::Star for location reference
         if token_iter
@@ -412,7 +458,11 @@ impl Parser {
             let value = self.parse_valexpr(token_iter)?;
             // if there are no more tokens or the next token is NOT a comma then we're done
             // note we can't consume the token yet!
-            if token_iter.peek().filter(|t| t.ttype == TokenType::Comma).is_none() {
+            if token_iter
+                .peek()
+                .filter(|t| t.ttype == TokenType::Comma)
+                .is_none()
+            {
                 od.value = Some(value);
                 od.mode = AddressingMode::Extended;
                 return Ok(());
@@ -424,11 +474,19 @@ impl Parser {
             if let Some(reg1) = token_iter.next().filter(|t| t.ttype == TokenType::Register) {
                 let reg = reg1.clean();
                 od.value = Some(value);
-                od.mode = if reg == "PCR" {AddressingMode::PCRelative} else {AddressingMode::Offset};
+                od.mode = if reg == "PCR" {
+                    AddressingMode::PCRelative
+                } else {
+                    AddressingMode::Offset
+                };
                 od.regs = Some(vec![reg]);
                 return Ok(());
             }
-            return Err(Error::new(ErrorKind::Syntax, None, "register missing after offset"));
+            return Err(Error::new(
+                ErrorKind::Syntax,
+                None,
+                "register missing after offset",
+            ));
         }
         // look for: reg [,reg]+
         if let Some(rt) = token_iter.peek().filter(|t| t.ttype == TokenType::Register) {
@@ -440,7 +498,11 @@ impl Parser {
             // look for [,R]
             loop {
                 // look for comma
-                if token_iter.peek().filter(|t| t.ttype == TokenType::Comma).is_none() {
+                if token_iter
+                    .peek()
+                    .filter(|t| t.ttype == TokenType::Comma)
+                    .is_none()
+                {
                     // if there's no comma then we're done
                     break;
                 }
@@ -459,15 +521,27 @@ impl Parser {
             return Ok(());
         }
         // look for: , reg | , -[-]reg | , reg+[+]
-        if token_iter.peek().filter(|t| t.ttype == TokenType::Comma).is_some() {
+        if token_iter
+            .peek()
+            .filter(|t| t.ttype == TokenType::Comma)
+            .is_some()
+        {
             // consume the comma token
             token_iter.next();
 
             // look for auto-decrement
-            if token_iter.peek().filter(|t| t.ttype == TokenType::Sub).is_some() {
+            if token_iter
+                .peek()
+                .filter(|t| t.ttype == TokenType::Sub)
+                .is_some()
+            {
                 token_iter.next();
                 od.incdec = Some(IncDecType::Dec);
-                if token_iter.peek().filter(|t| t.ttype == TokenType::Sub).is_some() {
+                if token_iter
+                    .peek()
+                    .filter(|t| t.ttype == TokenType::Sub)
+                    .is_some()
+                {
                     token_iter.next();
                     od.incdec = Some(IncDecType::DecDec);
                 }
@@ -483,7 +557,11 @@ impl Parser {
             }
             // save the register in our descriptor
             od.regs = Some(vec![reg1_opt.unwrap().clean()]);
-            if token_iter.peek().filter(|t| t.ttype == TokenType::Add).is_some() {
+            if token_iter
+                .peek()
+                .filter(|t| t.ttype == TokenType::Add)
+                .is_some()
+            {
                 if od.incdec.is_some() {
                     return Err(Error::new(
                         ErrorKind::Syntax,
@@ -493,7 +571,11 @@ impl Parser {
                 }
                 token_iter.next();
                 od.incdec = Some(IncDecType::Inc);
-                if token_iter.peek().filter(|t| t.ttype == TokenType::Add).is_some() {
+                if token_iter
+                    .peek()
+                    .filter(|t| t.ttype == TokenType::Add)
+                    .is_some()
+                {
                     token_iter.next();
                     od.incdec = Some(IncDecType::IncInc);
                 }
@@ -513,10 +595,12 @@ impl Parser {
     /// ```
     /// See parse_valexpr_lr for handling of left-to-right operation ordering.
     fn parse_valexpr(&self, token_iter: &mut TokenIter) -> Result<ValueNode, Error> {
+        /*
         if !config::ARGS.pemdas {
             // order of operations is set to left-to-right instead of PEMDAS
             return self.parse_valexpr_lr(token_iter);
         }
+        */
         let mut node = self.parse_mulexpr(token_iter)?;
         while token_iter.peek().is_some() {
             match token_iter.peek().unwrap().ttype {
@@ -547,7 +631,11 @@ impl Parser {
         let mut node = self.parse_mulexpr(token_iter)?;
         while token_iter.peek().is_some() {
             match token_iter.peek().unwrap().ttype {
-                TokenType::Add | TokenType::Sub | TokenType::Star | TokenType::Div | TokenType::Mod => {
+                TokenType::Add
+                | TokenType::Sub
+                | TokenType::Star
+                | TokenType::Div
+                | TokenType::Mod => {
                     // consume the operation token and get the next powexpr
                     let op_token = token_iter.next().unwrap();
                     let right = self.parse_powexpr(token_iter)?;
@@ -597,7 +685,11 @@ impl Parser {
     fn parse_powexpr(&self, token_iter: &mut TokenIter) -> Result<ValueNode, Error> {
         // make sure we have tokens to parse
         if token_iter.peek().is_none() {
-            return Err(Error::new(ErrorKind::Syntax, None, "missing number or label"));
+            return Err(Error::new(
+                ErrorKind::Syntax,
+                None,
+                "missing number or label",
+            ));
         }
         let mut negate = false;
         // is there a sign designator (+ or -) before the atom?
@@ -624,7 +716,11 @@ impl Parser {
         // if we get here then we expect to parse an atom
         let left = self.parse_atom(token_iter)?;
         // does it have an exponent?
-        if token_iter.peek().filter(|t| t.ttype == TokenType::Pow).is_none() {
+        if token_iter
+            .peek()
+            .filter(|t| t.ttype == TokenType::Pow)
+            .is_none()
+        {
             // no exponent. we're done.
             return Ok(left);
         }
@@ -657,7 +753,11 @@ impl Parser {
                 _ => {}
             }
         }
-        Err(Error::new(ErrorKind::Syntax, None, "missing label or value"))
+        Err(Error::new(
+            ErrorKind::Syntax,
+            None,
+            "missing label or value",
+        ))
     }
     pub fn str_to_value_node(&self, expr: &str) -> Result<ValueNode, Error> {
         let tokens = self.tokenize(expr)?;
@@ -666,11 +766,20 @@ impl Parser {
     /// Parse a string for a test criterion and populate the given TestCriterion object.
     /// ErrorKind::Reference is returned when unresolved labels are encountered
     ///
-    pub fn parse_test_criterion(&self, tc: &mut TestCriterion, lr: &dyn LabelResolver) -> Result<(), Error> {
+    #[cfg(not(target_os = "none"))]
+    pub fn parse_test_criterion(
+        &self,
+        tc: &mut TestCriterion,
+        lr: &dyn LabelResolver,
+    ) -> Result<(), Error> {
         let mut tokens = self.tokenize(&tc.lhs_src)?;
         let mut token_iter = tokens.into_iter().peekable();
         // try to get the lhs; start by looking for a register
-        if token_iter.peek().filter(|t| t.ttype == TokenType::Register).is_some() {
+        if token_iter
+            .peek()
+            .filter(|t| t.ttype == TokenType::Register)
+            .is_some()
+        {
             // consume the register token
             let reg = token_iter.next().unwrap();
             tc.lhs = Some(RegOrAddr::Reg(registers::Name::from_str(&reg.clean())));
@@ -680,15 +789,21 @@ impl Parser {
             let addr = node.eval(lr, 0, true)?;
             tc.lhs = Some(RegOrAddr::Addr(addr.u16()));
         } else {
-            return Err(syntax_err!(
-                format!("Invalid LHS \"{}\" in test criterion", &tc.lhs_src).as_str()
-            ));
+            return Err(syntax_err!(format!(
+                "Invalid LHS \"{}\" in test criterion",
+                &tc.lhs_src
+            )
+            .as_str()));
         }
         let mut rhs_is_value = false;
         tokens = self.tokenize(&tc.rhs_src)?;
         token_iter = tokens.into_iter().peekable();
         // get the rhs; start by looking for '#'
-        if token_iter.peek().filter(|t| t.ttype == TokenType::Hash).is_some() {
+        if token_iter
+            .peek()
+            .filter(|t| t.ttype == TokenType::Hash)
+            .is_some()
+        {
             // found "#" token; consume it; rhs is a value
             token_iter.next();
             rhs_is_value = true;
@@ -850,7 +965,11 @@ impl Parser {
             Ok(output)
         }
     }
-    fn get_number_from_binary(&self, current: &mut Option<char>, chars: &mut Chars) -> Result<Token, String> {
+    fn get_number_from_binary(
+        &self,
+        current: &mut Option<char>,
+        chars: &mut Chars,
+    ) -> Result<Token, String> {
         let mut num: u16 = 0;
         let mut digit_count = 0;
         let mut raw = "%".to_string();
@@ -877,7 +996,11 @@ impl Parser {
         };
         Ok(Token::new(TokenType::Number, raw, Some(u)))
     }
-    fn get_number_from_hex(&self, current: &mut Option<char>, chars: &mut Chars) -> Result<Token, String> {
+    fn get_number_from_hex(
+        &self,
+        current: &mut Option<char>,
+        chars: &mut Chars,
+    ) -> Result<Token, String> {
         let mut num: u16 = 0;
         let mut digit_count = 0;
         let mut raw = "$".to_string();
@@ -924,7 +1047,11 @@ impl Parser {
         }
         Ok(Token::new(TokenType::Number, raw, Some(u)))
     }
-    fn get_number_from_decimal(&self, current: &mut Option<char>, chars: &mut Chars) -> Result<Token, String> {
+    fn get_number_from_decimal(
+        &self,
+        current: &mut Option<char>,
+        chars: &mut Chars,
+    ) -> Result<Token, String> {
         let mut num: u32 = 0;
         let mut raw = String::new();
         while let Some(c) = current {
@@ -946,12 +1073,24 @@ impl Parser {
         };
         Ok(Token::new(TokenType::Number, raw, Some(u)))
     }
-    fn get_number_from_char(&self, current: &mut Option<char>, chars: &mut Chars) -> Result<Token, String> {
+    fn get_number_from_char(
+        &self,
+        current: &mut Option<char>,
+        chars: &mut Chars,
+    ) -> Result<Token, String> {
         let ch = current.unwrap();
         *current = chars.next();
-        Ok(Token::new(TokenType::Number, ch.to_string(), Some(u8u16::u8(ch as u8))))
+        Ok(Token::new(
+            TokenType::Number,
+            ch.to_string(),
+            Some(u8u16::u8(ch as u8)),
+        ))
     }
-    fn get_label_or_register(&self, current: &mut Option<char>, chars: &mut Chars) -> Result<Token, String> {
+    fn get_label_or_register(
+        &self,
+        current: &mut Option<char>,
+        chars: &mut Chars,
+    ) -> Result<Token, String> {
         let mut raw = String::new();
         while let Some(ref ch) = current {
             if !ch.is_ascii_digit() && !ch.is_alphabetic() && !ch.eq(&'_') && !ch.eq(&'$') {
@@ -960,7 +1099,7 @@ impl Parser {
             raw.push(*ch);
             *current = chars.next();
         }
-        let ttype = if self.re_registers.is_match(raw.as_str()) {
+        let ttype = if self.is_register(raw.as_str()) {
             TokenType::Register
         } else {
             TokenType::Label

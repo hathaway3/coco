@@ -6,12 +6,15 @@
 //! This implementation is based on the specification of I8HEX described in
 //! [this wikipedia article](https://en.wikipedia.org/wiki/Intel_HEX).
 
-use regex::Regex;
-use std::fmt::{self, Display};
-use std::fs::File;
-use std::io;
-use std::io::{BufRead, BufReader};
-use std::path::Path;
+// use regex::Regex;
+use crate::{String, ToString, Vec};
+use core::fmt::{self, Display};
+/*
+// use std::fs::File;
+// use std::io;
+// use std::io::{BufRead, BufReader};
+// use std::path::Path;
+*/
 
 pub mod HexRecordType {
     // This is an implementation of I8HEX so only the Data and EndOffile record types are supported
@@ -56,6 +59,7 @@ impl HexRecord {
         h.checksum = h.calc_checksum().expect("should be impossible");
         h
     }
+    /*
     pub fn from_str<S: AsRef<str>>(s: S) -> Result<Option<Self>, ()> {
         let re = Regex::new(r"(?i)^.*:([0-9a-f]{2})([0-9a-f]{4})([0-9a-f]{2})((?:[0-9a-f]{2})*)([0-9a-f]{2})")
             .map_err(|_| ())?;
@@ -65,6 +69,8 @@ impl HexRecord {
             Ok(None)
         }
     }
+    */
+    /*
     pub fn from_captures(c: &regex::Captures) -> Option<Self> {
         let data_size = u8::from_str_radix(c.get(1)?.as_str(), 16).ok()?;
         let h = HexRecord {
@@ -76,6 +82,7 @@ impl HexRecord {
         };
         h.calc_checksum().filter(|&c| c == h.checksum).map(|_| h)
     }
+    */
     fn data_from_str(s: &str, byte_count: u8) -> Option<Vec<u8>> {
         if byte_count == 0 || s.len() < (2 * byte_count) as usize {
             return None;
@@ -125,12 +132,14 @@ impl HexRecordCollection {
             records: Vec::new(),
             eof: false,
         };
+        /*
         for s in iter {
             let hr = HexRecord::from_str(s.into()).map_err(|_| general_err!("failed to parse hex file"))?;
             if let Some(hr) = hr {
                 hf.add_record(hr)?
             }
         }
+        */
         if hf.eof {
             Ok(hf)
         } else {
@@ -156,25 +165,20 @@ impl HexRecordCollection {
             checksum: 0xff,
         });
     }
+    /*
     pub fn read_from_file(path: &Path) -> Result<Self, Error> {
-        let file = BufReader::new(File::open(path)?)
-            .lines()
-            .collect::<Result<Vec<String>, io::Error>>()?;
-        HexRecordCollection::from_str_iter(file)
+        ...
     }
     pub fn write_to_file(&self, f: &mut dyn io::Write) -> Result<(), Error> {
-        if !self.eof {
-            return Err(general_err!("cannot write hex file without EOF record"));
-        }
-        for r in self.iter() {
-            f.write_all(r.to_string().as_bytes())?;
-        }
-        Ok(())
+        ...
     }
+    */
 }
 
-use std::ops::{Deref, DerefMut};
+use core::ops::{Deref, DerefMut};
 impl Deref for HexRecordCollection {
     type Target = Vec<HexRecord>;
-    fn deref(&self) -> &Self::Target { &self.records }
+    fn deref(&self) -> &Self::Target {
+        &self.records
+    }
 }
