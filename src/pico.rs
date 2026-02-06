@@ -96,8 +96,9 @@ mod embedded {
             while periphs.RESETS.reset_done().read().hstx().bit_is_clear() {}
 
             use pico_dvi_rs::dvi::pinout::DviPair::*;
-            // Pinout for Adafruit Feather RP2350 (Adjust if using different board!)
-            let pinout = DviPinout::new([D2, Clk, D1, D0], DviPolarity::Pos);
+            // Pinout for Raspberry Pi Pico 2 W (GPIO 12-19 in standard HSTX order)
+            // GPIO 12-13: D0, GPIO 14-15: CLK, GPIO 16-17: D2, GPIO 18-19: D1
+            let pinout = DviPinout::new([D0, Clk, D2, D1], DviPolarity::Pos);
 
             dvi::setup_hstx(&periphs.HSTX_CTRL, pinout);
             dvi::setup_dma(&periphs.DMA, &periphs.HSTX_FIFO);

@@ -124,7 +124,7 @@ Note: This builds a dummy test harness for the library when strictly targeting t
 ### Deployment Issues
 - **Pico not appearing as drive**: Ensure you're holding BOOTSEL while plugging in USB
 - **Firmware not running after copy**: Try unplugging and replugging the Pico
-- **No display output**: Verify DVI pinout matches your board (see `pico.rs` line 100)
+- **No display output**: Verify DVI connections to GPIO 12-19 (see `pico.rs` line 100)
 
 ### Runtime Issues
 - **Crashes or freezes**: May indicate memory exhaustion; consider reducing heap size
