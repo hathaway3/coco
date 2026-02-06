@@ -289,16 +289,15 @@ impl Core {
     /// Otherwise, the changes are only reflected in the instruction::Outcome object.
     /// If list_mode.is_some() then the instruction is not evaluated and Outcome reflects
     /// the state prior to the instruction.
-    pub fn exec_next(&mut self, commit: bool) -> Result<instructions::Outcome, Error> {
+    pub fn exec_next(&mut self, _commit: bool) -> Result<instructions::Outcome, Error> {
         // let mut start = Instant::now();
-        let mut inst = instructions::Instance::new(&self.reg, None);
+        let mut inst = instructions::Instance::new(self.reg.pc, None);
         let mut op16: u16 = 0; // 16-bit representation of the opcode
-        let mut live_ctx: registers::Set = self.reg;
 
         // get the base op code
         loop {
             inst.buf[inst.size as usize] =
-                self._read_u8(AccessType::Program, live_ctx.pc + inst.size, None)?;
+                self._read_u8(AccessType::Program, self.reg.pc + inst.size, None)?;
             op16 |= inst.buf[inst.size as usize] as u16;
             inst.size += 1;
             if inst.size == 1 && instructions::is_high_byte_of_16bit_instruction(inst.buf[0]) {
@@ -321,12 +320,12 @@ impl Core {
                 self.reg.pc
             ));
         };
-        self.process_addressing_mode(&mut inst, &mut live_ctx)?;
+        self.process_addressing_mode(&mut inst)?;
 
         assert!(inst.size >= inst.flavor.detail.sz);
         // adjust the program counter before evaluating instructions
-        live_ctx.pc = self.checked_pc_add(live_ctx.pc, inst.size, &inst)?;
-        let mut o = instructions::Outcome::new(inst, live_ctx);
+        self.reg.pc = self.checked_pc_add(self.reg.pc, inst.size, &inst)?;
+        let mut o = instructions::Outcome::new(inst);
         // track how long all this preparation took
         // self.prep_time += start.elapsed();
         // start = Instant::now();
@@ -339,15 +338,7 @@ impl Core {
         // start = Instant::now();
 
         // if caller wants to commit the changes and we're not in list mode then commit now
-        if commit && self.list_mode.is_none() {
-            self.reg = o.new_ctx;
-            // and complete any writes to the address space
-            if let Some(v) = o.writes.as_ref() {
-                for w in v {
-                    self._write_u8u16(w.at, w.addr, w.val)?;
-                }
-            }
-        }
+
         // self.commit_time += start.elapsed();
 
         self.instruction_count += 1;
@@ -382,16 +373,12 @@ impl Core {
     /// Determine the effective address for the instruction, update the instruction size,
     /// modify any registers that are changed by the addressing mode (e.g. ,X+),
     /// and provide a disassembled string representing the operand (if help_humans() == true).
-    /// Changes are reflected in the provided inst and live_ctx objects.
-    fn process_addressing_mode(
-        &self,
-        inst: &mut instructions::Instance,
-        live_ctx: &mut registers::Set,
-    ) -> Result<(), Error> {
+    /// Changes are reflected in the provided inst and self.reg objects.
+    fn process_addressing_mode(&mut self, inst: &mut instructions::Instance) -> Result<(), Error> {
         match inst.flavor.mode {
             instructions::AddressingMode::Immediate => {
                 // effective address is the current PC
-                inst.ea = self.checked_pc_add(live_ctx.pc, inst.size, inst)?;
+                inst.ea = self.checked_pc_add(self.reg.pc, inst.size, inst)?;
                 let addr_size = inst.flavor.detail.sz - inst.size;
                 let data = self._read_u8u16(AccessType::Program, inst.ea, addr_size)?;
                 inst.size += addr_size;
@@ -409,10 +396,10 @@ impl Core {
             instructions::AddressingMode::Direct => {
                 // effective address is u16 whose high byte = DP
                 // and low byte is stored at the current PC
-                inst.ea = ((live_ctx.dp as u16) << 8)
+                inst.ea = ((self.reg.dp as u16) << 8)
                     | (self._read_u8(
                         AccessType::Program,
-                        self.checked_pc_add(live_ctx.pc, inst.size, inst)?,
+                        self.checked_pc_add(self.reg.pc, inst.size, inst)?,
                         None,
                     )? as u16);
                 inst.size += 1;
@@ -424,7 +411,7 @@ impl Core {
                 // effective address is u16 stored at current PC
                 inst.ea = self._read_u16(
                     AccessType::Program,
-                    self.checked_pc_add(live_ctx.pc, inst.size, inst)?,
+                    self.checked_pc_add(self.reg.pc, inst.size, inst)?,
                     None,
                 )?;
                 inst.size += 2;
@@ -439,11 +426,11 @@ impl Core {
                 let offset_size = inst.flavor.detail.sz - inst.size;
                 let offset = self._read_u8u16(
                     AccessType::Program,
-                    self.checked_pc_add(live_ctx.pc, inst.size, inst)?,
+                    self.checked_pc_add(self.reg.pc, inst.size, inst)?,
                     offset_size,
                 )?;
                 inst.size += offset_size;
-                inst.ea = u8u16::u16(self.checked_pc_add(live_ctx.pc, inst.size, inst)?)
+                inst.ea = u8u16::u16(self.checked_pc_add(self.reg.pc, inst.size, inst)?)
                     .signed_offset(offset)
                     .u16();
                 if config::help_humans() {
@@ -455,7 +442,7 @@ impl Core {
                 // read the post-byte
                 let pb = self._read_u8(
                     AccessType::Program,
-                    self.checked_pc_add(live_ctx.pc, inst.size, inst)?,
+                    self.checked_pc_add(self.reg.pc, inst.size, inst)?,
                     None,
                 )?;
                 inst.size += 1;
@@ -463,19 +450,27 @@ impl Core {
                 let indirect = (pb & 0b10010000) == 0b10010000;
                 // note which register (preg) the register field (rr) is referencing
                 let rr = (pb & 0b01100000) >> 5;
-                let (ir_ptr, ir_str): (&mut u16, &str) = match rr {
-                    0 => (&mut live_ctx.x, "X"),
-                    1 => (&mut live_ctx.y, "Y"),
-                    2 => (&mut live_ctx.u, "U"),
-                    3 => (&mut live_ctx.s, "S"),
+                let reg_name = match rr {
+                    0 => registers::Name::X,
+                    1 => registers::Name::Y,
+                    2 => registers::Name::U,
+                    3 => registers::Name::S,
                     _ => unreachable!(),
                 };
+                let ir_str = match reg_name {
+                    registers::Name::X => "X",
+                    registers::Name::Y => "Y",
+                    registers::Name::U => "U",
+                    registers::Name::S => "S",
+                    _ => "",
+                };
+                let mut ir_val = self.reg.get_register(reg_name).u16();
                 match pb & 0x8f {
                     0..=0b11111 => {
                         // ,R + 5 bit offset
                         let offset =
                             ((pb & 0b11111) | if pb & 0b10000 != 0 { 0b11100000 } else { 0 }) as i8;
-                        let (addr, _) = u16::overflowing_add(*ir_ptr, offset as u16);
+                        let (addr, _) = u16::overflowing_add(ir_val, offset as u16);
                         inst.ea = addr;
                         if config::help_humans() {
                             inst.operand = Some(format!("{},{}", offset, ir_str))
@@ -494,18 +489,18 @@ impl Core {
                                 .as_str(),
                             ));
                         }
-                        inst.ea = *ir_ptr;
-                        let (r, _) = (*ir_ptr).overflowing_add(1);
-                        *ir_ptr = r;
+                        inst.ea = ir_val;
+                        let (r, _) = (ir_val).overflowing_add(1);
+                        ir_val = r; self.reg.set_register(reg_name, u8u16::u16(ir_val));
                         if config::help_humans() {
                             inst.operand = Some(format!(",{}+", ir_str));
                         }
                     }
                     0b10000001 => {
                         // ,R++
-                        inst.ea = *ir_ptr;
-                        let (r, _) = (*ir_ptr).overflowing_add(2);
-                        *ir_ptr = r;
+                        inst.ea = ir_val;
+                        let (r, _) = (ir_val).overflowing_add(2);
+                        ir_val = r; self.reg.set_register(reg_name, u8u16::u16(ir_val));
                         if config::help_humans() {
                             inst.operand = Some(format!(",{}++", ir_str));
                         }
@@ -523,32 +518,32 @@ impl Core {
                                 .as_str(),
                             ));
                         }
-                        let (r, _) = (*ir_ptr).overflowing_sub(1);
-                        *ir_ptr = r;
-                        inst.ea = *ir_ptr;
+                        let (r, _) = (ir_val).overflowing_sub(1);
+                        ir_val = r; self.reg.set_register(reg_name, u8u16::u16(ir_val));
+                        inst.ea = ir_val;
                         if config::help_humans() {
                             inst.operand = Some(format!(",-{}", ir_str));
                         }
                     }
                     0b10000011 => {
                         // ,--R
-                        let (r, _) = (*ir_ptr).overflowing_sub(2);
-                        *ir_ptr = r;
-                        inst.ea = *ir_ptr;
+                        let (r, _) = (ir_val).overflowing_sub(2);
+                        ir_val = r; self.reg.set_register(reg_name, u8u16::u16(ir_val));
+                        inst.ea = ir_val;
                         if config::help_humans() {
                             inst.operand = Some(format!(",--{}", ir_str));
                         }
                     }
                     0b10000100 => {
                         // EA = ,R + 0 offset
-                        inst.ea = *ir_ptr;
+                        inst.ea = ir_val;
                         if config::help_humans() {
                             inst.operand = Some(format!(",{}", ir_str));
                         }
                     }
                     0b10000101 => {
                         // EA = ,R + B offset
-                        let (addr, _) = u16::overflowing_add(*ir_ptr, (live_ctx.b as i8) as u16);
+                        let (addr, _) = u16::overflowing_add(ir_val, (self.reg.b as i8) as u16);
                         inst.ea = addr;
                         if config::help_humans() {
                             inst.operand = Some(format!("B,{}", ir_str));
@@ -556,7 +551,7 @@ impl Core {
                     }
                     0b10000110 => {
                         // EA = ,R + A offset
-                        let (addr, _) = u16::overflowing_add(*ir_ptr, (live_ctx.a as i8) as u16);
+                        let (addr, _) = u16::overflowing_add(ir_val, (self.reg.a as i8) as u16);
                         inst.ea = addr;
                         if config::help_humans() {
                             inst.operand = Some(format!("A,{}", ir_str));
@@ -566,10 +561,10 @@ impl Core {
                     0b10001000 => {
                         // EA = ,R + 8 bit offset
                         let offset =
-                            self._read_u8(AccessType::Program, live_ctx.pc + inst.size, None)?
+                            self._read_u8(AccessType::Program, self.reg.pc + inst.size, None)?
                                 as i8;
                         inst.size += 1;
-                        let (addr, _) = u16::overflowing_add(*ir_ptr, offset as u16);
+                        let (addr, _) = u16::overflowing_add(ir_val, offset as u16);
                         inst.ea = addr;
                         if config::help_humans() {
                             inst.operand = Some(format!("{},{}", offset, ir_str));
@@ -578,10 +573,10 @@ impl Core {
                     0b10001001 => {
                         // ,R + 16 bit offset
                         let offset =
-                            self._read_u16(AccessType::Program, live_ctx.pc + inst.size, None)?
+                            self._read_u16(AccessType::Program, self.reg.pc + inst.size, None)?
                                 as i16;
                         inst.size += 2;
-                        let (addr, _) = u16::overflowing_add(*ir_ptr, offset as u16);
+                        let (addr, _) = u16::overflowing_add(ir_val, offset as u16);
                         inst.ea = addr;
                         if config::help_humans() {
                             inst.operand = Some(format!("{},{}", offset, ir_str));
@@ -590,7 +585,7 @@ impl Core {
                     // 0b10001010 => {} invalid
                     0b10001011 => {
                         // ,R + D offset
-                        let (addr, _) = u16::overflowing_add(*ir_ptr, live_ctx.d);
+                        let (addr, _) = u16::overflowing_add(ir_val, self.reg.d);
                         inst.ea = addr;
                         if config::help_humans() {
                             inst.operand = Some(format!("D,{}", ir_str));
@@ -599,11 +594,11 @@ impl Core {
                     0b10001100 => {
                         // ,PC + 8 bit offset
                         let offset =
-                            self._read_u8(AccessType::Program, live_ctx.pc + inst.size, None)?
+                            self._read_u8(AccessType::Program, self.reg.pc + inst.size, None)?
                                 as i8;
                         inst.size += 1;
                         // Note: effective address is relative to the program counter's NEW value (the address of the next instruction)
-                        let (pc, _) = u16::overflowing_add(live_ctx.pc, inst.size);
+                        let (pc, _) = u16::overflowing_add(self.reg.pc, inst.size);
                         let (addr, _) = u16::overflowing_add(pc, offset as u16);
                         inst.ea = addr;
                         if config::help_humans() {
@@ -613,11 +608,11 @@ impl Core {
                     0b10001101 => {
                         // ,PC + 16 bit offset
                         let offset =
-                            self._read_u16(AccessType::Program, live_ctx.pc + inst.size, None)?
+                            self._read_u16(AccessType::Program, self.reg.pc + inst.size, None)?
                                 as i16;
                         inst.size += 2;
                         // Note: effective address is relative to the program counter's NEW value (the address of the next instruction)
-                        let (pc, _) = u16::overflowing_add(live_ctx.pc, inst.size);
+                        let (pc, _) = u16::overflowing_add(self.reg.pc, inst.size);
                         let (addr, _) = u16::overflowing_add(pc, offset as u16);
                         inst.ea = addr;
                         if config::help_humans() {
@@ -627,7 +622,7 @@ impl Core {
                     0b10001111 => {
                         // EA = [,address]
                         inst.ea =
-                            self._read_u16(AccessType::Program, live_ctx.pc + inst.size, None)?;
+                            self._read_u16(AccessType::Program, self.reg.pc + inst.size, None)?;
                         if config::help_humans() {
                             inst.operand = Some(format!("[{:04X}]", inst.ea));
                         }

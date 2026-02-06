@@ -503,7 +503,7 @@ impl Core {
             // in list mode, we need to just move the PC forward by the size of the instruction we just saw
             self.reg.pc += outcome.inst.size;
         }
-        self.next_linear_step = outcome.inst.ctx.pc + outcome.inst.size;
+        self.next_linear_step = outcome.inst.pc + outcome.inst.size;
     }
     pub fn fault(&mut self, _addr: u16, _e: &Error) {
         println!("{}", _e);

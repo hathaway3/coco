@@ -277,46 +277,40 @@ impl Meta {
     }
 }
 /// Tracks a write operation prior to commit.
-pub struct WriteRecord {
-    pub addr: u16,
-    pub at: AccessType,
-    pub val: u8u16,
-}
+// pub struct WriteRecord {
+//    pub addr: u16,
+//    pub at: AccessType,
+//    pub val: u8u16,
+// }
 /// Contains all the information about an instruction and the results of executing the instruction in the given context.
 /// Instructions are executed virtually first, with their results recorded in Outcome object.
 /// Thereafter, the results of the instruction may be committed to the simulator's registers and memory.
 pub struct Outcome {
     /// the full instance info for this instruction
     pub inst: Instance,
-    /// register set as a result of this instruction
-    pub new_ctx: registers::Set,
     /// indicates if this is a meta-instruction (and what type)
     pub meta: Option<Meta>,
-    /// all the writes that result from this instruction
-    pub writes: Option<Vec<WriteRecord>>,
     /// helpful debug info string (address and 16 bit value at address)
     pub dbgstr: Option<String>,
 }
 impl Outcome {
-    pub fn new(inst: Instance, new_ctx: registers::Set) -> Outcome {
+    pub fn new(inst: Instance) -> Outcome {
         Outcome {
             inst,
-            new_ctx,
             meta: None,
-            writes: None,
             dbgstr: None,
         }
     }
 
-    pub fn write(&mut self, addr: u16, at: AccessType, val: u8u16) {
-        if self.writes.is_none() {
-            self.writes = Some(Vec::new());
-        }
-        self.writes
-            .as_mut()
-            .unwrap()
-            .push(WriteRecord { addr, at, val });
-    }
+    // pub fn write(&mut self, addr: u16, at: AccessType, val: u8u16) {
+    //     if self.writes.is_none() {
+    //         self.writes = Some(Vec::new());
+    //     }
+    //     self.writes
+    //         .as_mut()
+    //         .unwrap()
+    //         .push(WriteRecord { addr, at, val });
+    // }
 }
 pub fn is_high_byte_of_16bit_instruction(op: u8) -> bool {
     op == 0x10 || op == 0x11
@@ -324,13 +318,7 @@ pub fn is_high_byte_of_16bit_instruction(op: u8) -> bool {
 /// Information about a specific instance of an instruction in the context of a running program.
 /// This includes the current values of all the registers and the calculated effective address
 /// along with all the specifics of the instruction itself (Flavor, etc.)
-///
-/// One of the more wasteful things I'm doing is copying a whole register set at least twice
-/// for each instruction executed: Once when the Instance object is created and again
-/// when the Outcome object is committed.
 pub struct Instance {
-    /// Context before this instruction executes (ctx.pc points to this instruction)
-    pub ctx: registers::Set,
     /// the Flavor of this instruction
     pub flavor: &'static Flavor,
     /// number of bytes taken up by opcode
@@ -341,6 +329,8 @@ pub struct Instance {
     pub buf: [u8; 8],
     /// The effective address referenced by the instruction
     pub ea: u16,
+    /// The address of this instruction
+    pub pc: u16,
     /// The human readable operand
     pub operand: Option<String>,
 }
@@ -351,14 +341,14 @@ const BAD_FLAVOR: &Flavor = &Flavor {
 };
 
 impl Instance {
-    pub fn new(context: &registers::Set, flavor: Option<&'static Flavor>) -> Instance {
+    pub fn new(pc: u16, flavor: Option<&'static Flavor>) -> Instance {
         Instance {
-            ctx: *context,
             flavor: flavor.unwrap_or(BAD_FLAVOR),
             opsize: 0,
             size: 0,
             buf: [0; 8],
             ea: 0,
+            pc,
             operand: None,
         }
     }
@@ -403,7 +393,7 @@ pub const MODE_DETAIL_ERROR: &ModeDetail = &M {
 };
 
 /// 6809 instructions are executed by the simulator via evaluation functions that have this signature.
-type EvalFn = fn(&Core, &mut Outcome) -> Result<(), Error>;
+type EvalFn = fn(&mut Core, &mut Outcome) -> Result<(), Error>;
 
 /// Enumerates the general operand type associated with an instruction.
 #[derive(Debug, PartialEq, Eq)]
@@ -485,20 +475,20 @@ impl core::fmt::Display for Flavor {
 //
 // instruction implementations and helpers
 //
-fn __nop(_: &Core, _: &mut Outcome) -> Result<(), Error> {
+fn __nop(_c: &mut Core, _: &mut Outcome) -> Result<(), Error> {
     // do nothing
     Ok(())
 }
 fn __psh_one(
-    _: &Core,
-    o: &mut Outcome,
+    c: &mut Core,
+    _o: &mut Outcome,
     stack: registers::Name,
     reg: registers::Name,
 ) -> Result<(), Error> {
-    let mut addr = o.new_ctx.get_register(stack).u16();
+    let mut addr = c.reg.get_register(stack).u16();
     if addr < registers::reg_size(reg) {
         return Err(runtime_err!(
-            Some(o.inst.ctx),
+            Some(c.reg),
             "{} stack overflow",
             if stack == registers::Name::U {
                 "user"
@@ -513,21 +503,21 @@ fn __psh_one(
     } else {
         AccessType::SystemStack
     };
-    o.write(addr, at, o.new_ctx.get_register(reg));
-    o.new_ctx.set_register(stack, u8u16::u16(addr));
+    c._write_u8u16(at, addr, c.reg.get_register(reg))?;
+    c.reg.set_register(stack, u8u16::u16(addr));
     Ok(())
 }
 fn __pul_one(
-    c: &Core,
-    o: &mut Outcome,
+    c: &mut Core,
+    _o: &mut Outcome,
     stack: registers::Name,
     reg: registers::Name,
 ) -> Result<(), Error> {
-    let addr = o.new_ctx.get_register(stack).u16();
+    let addr = c.reg.get_register(stack).u16();
     let size = registers::reg_size(reg);
     if (addr as usize + size as usize) > (1 + c.ram_top as usize) {
         return Err(runtime_err!(
-            Some(o.inst.ctx),
+            Some(c.reg),
             "{} stack underflow",
             if stack == registers::Name::U {
                 "user"
@@ -542,12 +532,12 @@ fn __pul_one(
         AccessType::SystemStack
     };
     let val = c._read_u8u16(at, addr, size)?;
-    o.new_ctx.set_register(reg, val);
+    c.reg.set_register(reg, val);
     let (new_addr, _) = addr.overflowing_add(size);
-    o.new_ctx.set_register(stack, u8u16::u16(new_addr));
+    c.reg.set_register(stack, u8u16::u16(new_addr));
     Ok(())
 }
-fn __psh(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __psh(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     let pb = c._read_u8(AccessType::Program, o.inst.ea, None)?;
     if pb & PPPostByte::PC != 0 {
         __psh_one(c, o, o.inst.flavor.desc.reg, registers::Name::PC)?;
@@ -580,7 +570,7 @@ fn __psh(c: &Core, o: &mut Outcome) -> Result<(), Error> {
     }
     Ok(())
 }
-fn __pul(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __pul(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     let pb = c._read_u8(AccessType::Program, o.inst.ea, None)?;
     if pb & PPPostByte::CC != 0 {
         __pul_one(c, o, o.inst.flavor.desc.reg, registers::Name::CC)?;
@@ -614,11 +604,11 @@ fn __pul(c: &Core, o: &mut Outcome) -> Result<(), Error> {
     Ok(())
 }
 
-fn __rti(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __rti(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     __pul_one(c, o, registers::Name::S, registers::Name::CC)?;
     // if E flag was set in the saved CC then restore all registers
     // otherwise, only restore CC and PC (and the E flag was reset by restoring CC)
-    if o.new_ctx.cc.is_set(registers::CCBit::E) {
+    if c.reg.cc.is_set(registers::CCBit::E) {
         __pul_one(c, o, registers::Name::S, registers::Name::A)?;
         __pul_one(c, o, registers::Name::S, registers::Name::B)?;
         __pul_one(c, o, registers::Name::S, registers::Name::DP)?;
@@ -629,100 +619,100 @@ fn __rti(c: &Core, o: &mut Outcome) -> Result<(), Error> {
     __pul_one(c, o, registers::Name::S, registers::Name::PC)?;
     Ok(())
 }
-fn __tfr(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __tfr(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     let pb = c._read_u8(AccessType::Program, o.inst.ea, None)?;
     if let Some((r1, r2)) = TEPostByte::to_registers(pb) {
         // Note: CCR unaffected unless CC is the destination register
-        o.new_ctx.set_register(r2, o.new_ctx.get_register(r1));
+        c.reg.set_register(r2, c.reg.get_register(r1));
         Ok(())
     } else {
         Err(syntax_err_ctx!(
-            Some(o.new_ctx),
+            Some(c.reg),
             "invalid registers for TFR instruction"
         ))
     }
 }
-fn __exg(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __exg(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     let pb = c._read_u8(AccessType::Program, o.inst.ea, None)?;
     if let Some((r1, r2)) = TEPostByte::to_registers(pb) {
         // Note: CCR unaffected unless CC is one of the registers exchanged
-        let r2_val = o.new_ctx.get_register(r2);
-        o.new_ctx.set_register(r2, o.new_ctx.get_register(r1));
-        o.new_ctx.set_register(r1, r2_val);
+        let r2_val = c.reg.get_register(r2);
+        c.reg.set_register(r2, c.reg.get_register(r1));
+        c.reg.set_register(r1, r2_val);
         Ok(())
     } else {
         Err(syntax_err_ctx!(
-            Some(o.new_ctx),
+            Some(c.reg),
             "invalid registers for EXG instruction"
         ))
     }
 }
-fn __add(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __add(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     __add_carry(c, o, false)
 }
-fn __adc(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __adc(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     __add_carry(c, o, true)
 }
-fn __add_carry(c: &Core, o: &mut Outcome, carry: bool) -> Result<(), Error> {
+fn __add_carry(c: &mut Core, o: &mut Outcome, carry: bool) -> Result<(), Error> {
     let reg = o.inst.flavor.desc.reg;
     let data = c._read_u8u16(AccessType::Generic, o.inst.ea, registers::reg_size(reg))?;
-    let reg_val = o.new_ctx.get_register(reg);
+    let reg_val = c.reg.get_register(reg);
     let new_val = match reg {
         registers::Name::A | registers::Name::B => {
-            u8u16::u8(o.new_ctx.cc.add_u8(reg_val.u8(), data.u8(), carry))
+            u8u16::u8(c.reg.cc.add_u8(reg_val.u8(), data.u8(), carry))
         }
-        registers::Name::D => u8u16::u16(o.new_ctx.cc.add_u16(reg_val.u16(), data.u16())),
+        registers::Name::D => u8u16::u16(c.reg.cc.add_u16(reg_val.u16(), data.u16())),
         _ => panic!("invalid register for add instruction"),
     };
-    o.new_ctx.set_register(reg, new_val);
+    c.reg.set_register(reg, new_val);
     Ok(())
 }
-fn __sub(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __sub(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     let reg = o.inst.flavor.desc.reg;
     let data = c._read_u8u16(AccessType::Generic, o.inst.ea, registers::reg_size(reg))?;
-    let reg_val = o.new_ctx.get_register(reg);
+    let reg_val = c.reg.get_register(reg);
     let new_val = match reg {
         registers::Name::A | registers::Name::B => {
-            u8u16::u8(o.new_ctx.cc.sub_u8(reg_val.u8(), data.u8(), false))
+            u8u16::u8(c.reg.cc.sub_u8(reg_val.u8(), data.u8(), false))
         }
-        registers::Name::D => u8u16::u16(o.new_ctx.cc.sub_u16(reg_val.u16(), data.u16())),
+        registers::Name::D => u8u16::u16(c.reg.cc.sub_u16(reg_val.u16(), data.u16())),
         _ => panic!("invalid register for sub instruction"),
     };
-    o.new_ctx.set_register(reg, new_val);
+    c.reg.set_register(reg, new_val);
     Ok(())
 }
-fn __sbc(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __sbc(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     let reg = o.inst.flavor.desc.reg;
     let data = c._read_u8(AccessType::Generic, o.inst.ea, None)?;
-    let reg_val = o.new_ctx.get_register(reg);
+    let reg_val = c.reg.get_register(reg);
     let new_val = match reg {
         registers::Name::A | registers::Name::B => {
-            u8u16::u8(o.new_ctx.cc.sub_u8(reg_val.u8(), data, true))
+            u8u16::u8(c.reg.cc.sub_u8(reg_val.u8(), data, true))
         }
         _ => panic!("invalid register for sub instruction"),
     };
-    o.new_ctx.set_register(reg, new_val);
+    c.reg.set_register(reg, new_val);
     Ok(())
 }
-fn __neg(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __neg(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     let reg = o.inst.flavor.desc.reg;
     if reg == registers::Name::Z {
         let val = c._read_u8(AccessType::Generic, o.inst.ea, None)?;
-        let new_val = o.new_ctx.cc.neg_u8(val);
-        o.write(o.inst.ea, AccessType::Generic, u8u16::u8(new_val));
+        let new_val = c.reg.cc.neg_u8(val);
+        c._write_u8u16(AccessType::Generic, o.inst.ea, u8u16::u8(new_val))?;
     } else {
         assert!(reg == registers::Name::A || reg == registers::Name::B);
-        let val = o.new_ctx.get_register(reg).u8();
-        let new_val = o.new_ctx.cc.neg_u8(val);
-        o.new_ctx.set_register(reg, u8u16::u8(new_val));
+        let val = c.reg.get_register(reg).u8();
+        let new_val = c.reg.cc.neg_u8(val);
+        c.reg.set_register(reg, u8u16::u8(new_val));
     }
     Ok(())
 }
-fn __daa(_: &Core, o: &mut Outcome) -> Result<(), Error> {
-    let mut lsd = o.new_ctx.a & 0x0f;
-    let mut msd = o.new_ctx.a & 0xf0;
+fn __daa(c: &mut Core, _o: &mut Outcome) -> Result<(), Error> {
+    let mut lsd = c.reg.a & 0x0f;
+    let mut msd = c.reg.a & 0xf0;
     let mut oa = (0u8, false);
-    if lsd > 9 || o.new_ctx.cc.is_set(registers::CCBit::H) {
+    if lsd > 9 || c.reg.cc.is_set(registers::CCBit::H) {
         lsd += 6;
         if lsd > 9 {
             lsd &= 0x0f;
@@ -730,406 +720,401 @@ fn __daa(_: &Core, o: &mut Outcome) -> Result<(), Error> {
             msd = oa.0;
         }
     }
-    if msd > 0x90 || oa.1 || o.new_ctx.cc.is_set(registers::CCBit::C) {
+    if msd > 0x90 || oa.1 || c.reg.cc.is_set(registers::CCBit::C) {
         oa = msd.overflowing_add(0x60);
         msd = oa.0;
     }
     // always use reg_from_ methods to alter a, b and d
-    o.new_ctx
-        .set_register(registers::Name::A, u8u16::u8(msd | lsd));
-    o.new_ctx.cc.set(registers::CCBit::C, oa.1);
-    o.new_ctx.cc.set(registers::CCBit::Z, o.new_ctx.a == 0);
-    o.new_ctx
-        .cc
-        .set(registers::CCBit::N, o.new_ctx.a & 0b10000000 != 0);
-    o.new_ctx.cc.set(registers::CCBit::V, false);
+    c.reg.set_register(registers::Name::A, u8u16::u8(msd | lsd));
+    c.reg.cc.set(registers::CCBit::C, oa.1);
+    c.reg.cc.set(registers::CCBit::Z, c.reg.a == 0);
+    c.reg.cc.set(registers::CCBit::N, c.reg.a & 0b10000000 != 0);
+    c.reg.cc.set(registers::CCBit::V, false);
     // the H flag is not effected by this operation
     Ok(())
 }
-fn __and(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __and(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     let reg = o.inst.flavor.desc.reg;
     assert!(registers::reg_size(reg) == 1);
     let data = c._read_u8(AccessType::Generic, o.inst.ea, None)?;
     if reg == registers::Name::CC {
-        o.new_ctx.cc.reg &= data;
+        c.reg.cc.reg &= data;
     } else {
-        let reg_val = o.new_ctx.get_register(reg);
-        let new_val = o.new_ctx.cc.and_u8(reg_val.u8(), data);
-        o.new_ctx.set_register(reg, u8u16::u8(new_val));
+        let reg_val = c.reg.get_register(reg);
+        let new_val = c.reg.cc.and_u8(reg_val.u8(), data);
+        c.reg.set_register(reg, u8u16::u8(new_val));
     }
     Ok(())
 }
-fn __bit(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __bit(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     let reg = o.inst.flavor.desc.reg;
     assert!(reg == registers::Name::A || reg == registers::Name::B);
     let data = c._read_u8(AccessType::Generic, o.inst.ea, None)?;
-    let reg_val = o.new_ctx.get_register(reg);
-    o.new_ctx.cc.and_u8(reg_val.u8(), data);
+    let reg_val = c.reg.get_register(reg);
+    c.reg.cc.and_u8(reg_val.u8(), data);
     Ok(())
 }
-fn __or(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __or(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     let reg = o.inst.flavor.desc.reg;
     assert!(registers::reg_size(reg) == 1);
     let data = c._read_u8(AccessType::Generic, o.inst.ea, None)?;
     if reg == registers::Name::CC {
-        o.new_ctx.cc.reg |= data;
+        c.reg.cc.reg |= data;
     } else {
-        let reg_val = o.new_ctx.get_register(reg);
-        let new_val = o.new_ctx.cc.or_u8(reg_val.u8(), data);
-        o.new_ctx.set_register(reg, u8u16::u8(new_val));
+        let reg_val = c.reg.get_register(reg);
+        let new_val = c.reg.cc.or_u8(reg_val.u8(), data);
+        c.reg.set_register(reg, u8u16::u8(new_val));
     }
     Ok(())
 }
-fn __xor(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __xor(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     let reg = o.inst.flavor.desc.reg;
     assert!(reg == registers::Name::A || reg == registers::Name::B);
     let data = c._read_u8(AccessType::Generic, o.inst.ea, None)?;
-    let reg_val = o.new_ctx.get_register(reg);
-    let new_val = o.new_ctx.cc.xor_u8(reg_val.u8(), data);
-    o.new_ctx.set_register(reg, u8u16::u8(new_val));
+    let reg_val = c.reg.get_register(reg);
+    let new_val = c.reg.cc.xor_u8(reg_val.u8(), data);
+    c.reg.set_register(reg, u8u16::u8(new_val));
     Ok(())
 }
-fn __bra(_: &Core, o: &mut Outcome) -> Result<(), Error> {
-    o.new_ctx
+fn __bra(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
+    c.reg
         .set_register(registers::Name::PC, u8u16::u16(o.inst.ea));
     Ok(())
 }
-fn __bsr(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __bsr(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     __psh_one(c, o, registers::Name::S, registers::Name::PC)?;
     __bra(c, o)
 }
-fn __bcc(c: &Core, o: &mut Outcome) -> Result<(), Error> {
-    if !o.new_ctx.cc.is_set(registers::CCBit::C) {
+fn __bcc(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
+    if !c.reg.cc.is_set(registers::CCBit::C) {
         __bra(c, o)?;
     }
     Ok(())
 }
-fn __bcs(c: &Core, o: &mut Outcome) -> Result<(), Error> {
-    if o.new_ctx.cc.is_set(registers::CCBit::C) {
+fn __bcs(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
+    if c.reg.cc.is_set(registers::CCBit::C) {
         __bra(c, o)?;
     }
     Ok(())
 }
-fn __bhs(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __bhs(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     __bcc(c, o)
 }
-fn __blo(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __blo(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     __bcs(c, o)
 }
-fn __bvc(c: &Core, o: &mut Outcome) -> Result<(), Error> {
-    if !o.new_ctx.cc.is_set(registers::CCBit::V) {
+fn __bvc(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
+    if !c.reg.cc.is_set(registers::CCBit::V) {
         __bra(c, o)?;
     }
     Ok(())
 }
-fn __bvs(c: &Core, o: &mut Outcome) -> Result<(), Error> {
-    if o.new_ctx.cc.is_set(registers::CCBit::V) {
+fn __bvs(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
+    if c.reg.cc.is_set(registers::CCBit::V) {
         __bra(c, o)?;
     }
     Ok(())
 }
-fn __bhi(c: &Core, o: &mut Outcome) -> Result<(), Error> {
-    if !o.new_ctx.cc.is_set(registers::CCBit::Z) && !o.new_ctx.cc.is_set(registers::CCBit::C) {
+fn __bhi(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
+    if !c.reg.cc.is_set(registers::CCBit::Z) && !c.reg.cc.is_set(registers::CCBit::C) {
         __bra(c, o)?;
     }
     Ok(())
 }
-fn __beq(c: &Core, o: &mut Outcome) -> Result<(), Error> {
-    if o.new_ctx.cc.is_set(registers::CCBit::Z) {
+fn __beq(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
+    if c.reg.cc.is_set(registers::CCBit::Z) {
         __bra(c, o)?;
     }
     Ok(())
 }
-fn __bmi(c: &Core, o: &mut Outcome) -> Result<(), Error> {
-    if o.new_ctx.cc.is_set(registers::CCBit::N) {
+fn __bmi(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
+    if c.reg.cc.is_set(registers::CCBit::N) {
         __bra(c, o)?;
     }
     Ok(())
 }
-fn __bne(c: &Core, o: &mut Outcome) -> Result<(), Error> {
-    if !o.new_ctx.cc.is_set(registers::CCBit::Z) {
+fn __bne(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
+    if !c.reg.cc.is_set(registers::CCBit::Z) {
         __bra(c, o)?;
     }
     Ok(())
 }
-fn __bge(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __bge(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     if !xor!(
-        o.new_ctx.cc.is_set(registers::CCBit::V),
-        o.new_ctx.cc.is_set(registers::CCBit::N)
+        c.reg.cc.is_set(registers::CCBit::V),
+        c.reg.cc.is_set(registers::CCBit::N)
     ) {
         __bra(c, o)?;
     }
     Ok(())
 }
-fn __bgt(c: &Core, o: &mut Outcome) -> Result<(), Error> {
-    if !o.new_ctx.cc.is_set(registers::CCBit::Z) {
+fn __bgt(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
+    if !c.reg.cc.is_set(registers::CCBit::Z) {
         __bge(c, o)?;
     }
     Ok(())
 }
-fn __blt(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __blt(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     if xor!(
-        o.new_ctx.cc.is_set(registers::CCBit::N),
-        o.new_ctx.cc.is_set(registers::CCBit::V)
+        c.reg.cc.is_set(registers::CCBit::N),
+        c.reg.cc.is_set(registers::CCBit::V)
     ) {
         __bra(c, o)?;
     }
     Ok(())
 }
-fn __ble(c: &Core, o: &mut Outcome) -> Result<(), Error> {
-    if o.new_ctx.cc.is_set(registers::CCBit::Z)
+fn __ble(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
+    if c.reg.cc.is_set(registers::CCBit::Z)
         || xor!(
-            o.new_ctx.cc.is_set(registers::CCBit::N),
-            o.new_ctx.cc.is_set(registers::CCBit::V)
+            c.reg.cc.is_set(registers::CCBit::N),
+            c.reg.cc.is_set(registers::CCBit::V)
         )
     {
         __bra(c, o)?;
     }
     Ok(())
 }
-fn __bls(c: &Core, o: &mut Outcome) -> Result<(), Error> {
-    if o.new_ctx.cc.is_set(registers::CCBit::C) || o.new_ctx.cc.is_set(registers::CCBit::Z) {
+fn __bls(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
+    if c.reg.cc.is_set(registers::CCBit::C) || c.reg.cc.is_set(registers::CCBit::Z) {
         __bra(c, o)?;
     }
     Ok(())
 }
-fn __bpl(c: &Core, o: &mut Outcome) -> Result<(), Error> {
-    if !o.new_ctx.cc.is_set(registers::CCBit::N) {
+fn __bpl(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
+    if !c.reg.cc.is_set(registers::CCBit::N) {
         __bra(c, o)?;
     }
     Ok(())
 }
-fn __abx(_: &Core, o: &mut Outcome) -> Result<(), Error> {
-    let x = o.new_ctx.get_register(registers::Name::X).u16();
-    let b = o.new_ctx.get_register(registers::Name::B).u16();
+fn __abx(c: &mut Core, _o: &mut Outcome) -> Result<(), Error> {
+    let x = c.reg.get_register(registers::Name::X).u16();
+    let b = c.reg.get_register(registers::Name::B).u16();
     let (newx, _) = x.overflowing_add(b);
     // Note: ABX has no effect on flags
-    o.new_ctx.set_register(registers::Name::X, u8u16::u16(newx));
+    c.reg.set_register(registers::Name::X, u8u16::u16(newx));
     Ok(())
 }
-fn __clr(_: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __clr(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     let reg = o.inst.flavor.desc.reg;
     if reg == registers::Name::Z {
-        o.write(o.inst.ea, AccessType::Generic, u8u16::u8(0));
+        c._write_u8u16(AccessType::Generic, o.inst.ea, u8u16::u8(0))?;
     } else {
         assert!(reg == registers::Name::A || reg == registers::Name::B);
-        o.new_ctx.set_register(reg, u8u16::u8(0));
+        c.reg.set_register(reg, u8u16::u8(0));
     }
-    o.new_ctx.cc.set(registers::CCBit::Z, true);
-    o.new_ctx.cc.set(registers::CCBit::V, false);
-    o.new_ctx.cc.set(registers::CCBit::N, false);
-    o.new_ctx.cc.set(registers::CCBit::C, false);
+    c.reg.cc.set(registers::CCBit::Z, true);
+    c.reg.cc.set(registers::CCBit::V, false);
+    c.reg.cc.set(registers::CCBit::N, false);
+    c.reg.cc.set(registers::CCBit::C, false);
     Ok(())
 }
-fn __inc(c: &Core, o: &mut Outcome) -> Result<(), Error> {
-    let reg = o.inst.flavor.desc.reg;
-    if reg == registers::Name::Z {
-        let data = c._read_u8(AccessType::Generic, o.inst.ea, None)?;
-        let new_val = o.new_ctx.cc.inc_u8(data);
-        o.write(o.inst.ea, AccessType::Generic, u8u16::u8(new_val));
-    } else {
-        assert!(reg == registers::Name::A || reg == registers::Name::B);
-        let data = o.new_ctx.get_register(reg).u8();
-        let new_val = o.new_ctx.cc.inc_u8(data);
-        o.new_ctx.set_register(reg, u8u16::u8(new_val));
-    }
-    Ok(())
-}
-fn __dec(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __inc(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     let reg = o.inst.flavor.desc.reg;
     if reg == registers::Name::Z {
         let data = c._read_u8(AccessType::Generic, o.inst.ea, None)?;
-        let new_val = o.new_ctx.cc.dec_u8(data);
-        o.write(o.inst.ea, AccessType::Generic, u8u16::u8(new_val));
+        let new_val = c.reg.cc.inc_u8(data);
+        c._write_u8u16(AccessType::Generic, o.inst.ea, u8u16::u8(new_val))?;
     } else {
         assert!(reg == registers::Name::A || reg == registers::Name::B);
-        let data = o.new_ctx.get_register(reg).u8();
-        let new_val = o.new_ctx.cc.dec_u8(data);
-        o.new_ctx.set_register(reg, u8u16::u8(new_val));
+        let data = c.reg.get_register(reg).u8();
+        let new_val = c.reg.cc.inc_u8(data);
+        c.reg.set_register(reg, u8u16::u8(new_val));
     }
     Ok(())
 }
-fn __ld(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __dec(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
+    let reg = o.inst.flavor.desc.reg;
+    if reg == registers::Name::Z {
+        let data = c._read_u8(AccessType::Generic, o.inst.ea, None)?;
+        let new_val = c.reg.cc.dec_u8(data);
+        c._write_u8u16(AccessType::Generic, o.inst.ea, u8u16::u8(new_val))?;
+    } else {
+        assert!(reg == registers::Name::A || reg == registers::Name::B);
+        let data = c.reg.get_register(reg).u8();
+        let new_val = c.reg.cc.dec_u8(data);
+        c.reg.set_register(reg, u8u16::u8(new_val));
+    }
+    Ok(())
+}
+fn __ld(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     let val = c._read_u8u16(
         AccessType::Generic,
         o.inst.ea,
         registers::reg_size(o.inst.flavor.desc.reg),
     )?;
-    o.new_ctx.set_register(o.inst.flavor.desc.reg, val);
+    c.reg.set_register(o.inst.flavor.desc.reg, val);
     // set cc registers
     if registers::reg_size(o.inst.flavor.desc.reg) == 1 {
-        o.new_ctx.cc.and_u8(val.u8(), 0xff);
+        c.reg.cc.and_u8(val.u8(), 0xff);
     } else {
-        o.new_ctx.cc.and_u16(val.u16(), 0xffff);
+        c.reg.cc.and_u16(val.u16(), 0xffff);
     }
     Ok(())
 }
-fn __cmp(c: &Core, o: &mut Outcome) -> Result<(), Error> {
-    let reg_val = o.new_ctx.get_register(o.inst.flavor.desc.reg);
+fn __cmp(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
+    let reg_val = c.reg.get_register(o.inst.flavor.desc.reg);
     let val = c._read_u8u16(
         AccessType::Generic,
         o.inst.ea,
         registers::reg_size(o.inst.flavor.desc.reg),
     )?;
     match reg_val {
-        u8u16::u16(w) => o.new_ctx.cc.cmp_u16(w, val.u16()),
-        u8u16::u8(b) => o.new_ctx.cc.cmp_u8(b, val.u8()),
+        u8u16::u16(w) => c.reg.cc.cmp_u16(w, val.u16()),
+        u8u16::u8(b) => c.reg.cc.cmp_u8(b, val.u8()),
     }
     Ok(())
 }
 
-fn __lea(_: &Core, o: &mut Outcome) -> Result<(), Error> {
-    o.new_ctx
+fn __lea(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
+    c.reg
         .set_register(o.inst.flavor.desc.reg, u8u16::u16(o.inst.ea));
     if o.inst.flavor.desc.reg == registers::Name::X || o.inst.flavor.desc.reg == registers::Name::Y
     {
-        o.new_ctx.cc.set(registers::CCBit::Z, o.inst.ea == 0);
+        c.reg.cc.set(registers::CCBit::Z, o.inst.ea == 0);
     }
     Ok(())
 }
-fn __st(_: &Core, o: &mut Outcome) -> Result<(), Error> {
-    let val = o.inst.ctx.get_register(o.inst.flavor.desc.reg);
-    o.write(o.inst.ea, AccessType::Generic, val);
+fn __st(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
+    let val = c.reg.get_register(o.inst.flavor.desc.reg);
+    c._write_u8u16(AccessType::Generic, o.inst.ea, val)?;
     // set cc flags!
     match val {
         u8u16::u16(w) => {
-            o.new_ctx.cc.and_u16(w, 0xffff);
+            c.reg.cc.and_u16(w, 0xffff);
         }
         u8u16::u8(b) => {
-            o.new_ctx.cc.and_u8(b, 0xff);
+            c.reg.cc.and_u8(b, 0xff);
         }
     }
     Ok(())
 }
-fn __jmp(_: &Core, o: &mut Outcome) -> Result<(), Error> {
-    o.new_ctx
+fn __jmp(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
+    c.reg
         .set_register(registers::Name::PC, u8u16::u16(o.inst.ea));
     Ok(())
 }
-fn __jsr(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __jsr(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     __psh_one(c, o, registers::Name::S, registers::Name::PC)?;
     __jmp(c, o)
 }
-fn __rts(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __rts(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     __pul_one(c, o, registers::Name::S, registers::Name::PC)
 }
-fn __tst(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __tst(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     let acc = match o.inst.flavor.desc.reg {
-        registers::Name::A | registers::Name::B => {
-            o.new_ctx.get_register(o.inst.flavor.desc.reg).u8()
-        }
+        registers::Name::A | registers::Name::B => c.reg.get_register(o.inst.flavor.desc.reg).u8(),
         registers::Name::Z => c._read_u8(AccessType::Generic, o.inst.ea, None)?,
         _ => panic!("invalid register for TST instruction?!"),
     };
-    o.new_ctx.cc.or_u8(acc, 0);
+    c.reg.cc.or_u8(acc, 0);
     Ok(())
 }
-fn __sex(_: &Core, o: &mut Outcome) -> Result<(), Error> {
-    let b = o.new_ctx.get_register(registers::Name::B).u8();
+fn __sex(c: &mut Core, _o: &mut Outcome) -> Result<(), Error> {
+    let b = c.reg.get_register(registers::Name::B).u8();
     let a = u8u16::new(if b & 0x80 == 0 { 0 } else { 0xff }, None);
     // sign extend accb into acca (really sign extend accb into accd)
-    o.new_ctx.set_register(registers::Name::A, a);
+    c.reg.set_register(registers::Name::A, a);
     // set cc's n & z bits based on accb
-    o.new_ctx.cc.or_u8(b, 0);
+    c.reg.cc.or_u8(b, 0);
     Ok(())
 }
-fn __asl(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __asl(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     let reg = o.inst.flavor.desc.reg;
     if reg == registers::Name::Z {
         let data = c._read_u8(AccessType::Generic, o.inst.ea, None)?;
-        let new_val = o.new_ctx.cc.shl_u8(data);
-        o.write(o.inst.ea, AccessType::Generic, u8u16::u8(new_val));
+        let new_val = c.reg.cc.shl_u8(data);
+        c._write_u8u16(AccessType::Generic, o.inst.ea, u8u16::u8(new_val))?;
     } else {
         assert!(reg == registers::Name::A || reg == registers::Name::B);
-        let data = o.new_ctx.get_register(reg).u8();
-        let new_val = o.new_ctx.cc.shl_u8(data);
-        o.new_ctx.set_register(reg, u8u16::u8(new_val));
+        let data = c.reg.get_register(reg).u8();
+        let new_val = c.reg.cc.shl_u8(data);
+        c.reg.set_register(reg, u8u16::u8(new_val));
     }
     Ok(())
 }
-fn __asr(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __asr(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     __shr(c, o, true)
 }
-fn __lsr(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __lsr(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     __shr(c, o, false)
 }
-fn __shr(c: &Core, o: &mut Outcome, preserve_sign: bool) -> Result<(), Error> {
+fn __shr(c: &mut Core, o: &mut Outcome, preserve_sign: bool) -> Result<(), Error> {
     let reg = o.inst.flavor.desc.reg;
     if reg == registers::Name::Z {
         let data = c._read_u8(AccessType::Generic, o.inst.ea, None)?;
-        let new_val = o.new_ctx.cc.shr_u8(data, preserve_sign);
-        o.write(o.inst.ea, AccessType::Generic, u8u16::u8(new_val));
+        let new_val = c.reg.cc.shr_u8(data, preserve_sign);
+        c._write_u8u16(AccessType::Generic, o.inst.ea, u8u16::u8(new_val))?;
     } else {
         assert!(reg == registers::Name::A || reg == registers::Name::B);
-        let data = o.new_ctx.get_register(reg).u8();
-        let new_val = o.new_ctx.cc.shr_u8(data, preserve_sign);
-        o.new_ctx.set_register(reg, u8u16::u8(new_val));
+        let data = c.reg.get_register(reg).u8();
+        let new_val = c.reg.cc.shr_u8(data, preserve_sign);
+        c.reg.set_register(reg, u8u16::u8(new_val));
     }
     Ok(())
 }
-fn __rol(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __rol(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     let reg = o.inst.flavor.desc.reg;
     if reg == registers::Name::Z {
         let data = c._read_u8(AccessType::Generic, o.inst.ea, None)?;
-        let new_val = o.new_ctx.cc.rol_u8(data);
-        o.write(o.inst.ea, AccessType::Generic, u8u16::u8(new_val));
+        let new_val = c.reg.cc.rol_u8(data);
+        c._write_u8u16(AccessType::Generic, o.inst.ea, u8u16::u8(new_val))?;
     } else {
         assert!(reg == registers::Name::A || reg == registers::Name::B);
-        let data = o.new_ctx.get_register(reg).u8();
-        let new_val = o.new_ctx.cc.rol_u8(data);
-        o.new_ctx.set_register(reg, u8u16::u8(new_val));
+        let data = c.reg.get_register(reg).u8();
+        let new_val = c.reg.cc.rol_u8(data);
+        c.reg.set_register(reg, u8u16::u8(new_val));
     }
     Ok(())
 }
-fn __ror(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __ror(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     let reg = o.inst.flavor.desc.reg;
     if reg == registers::Name::Z {
         let data = c._read_u8(AccessType::Generic, o.inst.ea, None)?;
-        let new_val = o.new_ctx.cc.ror_u8(data);
-        o.write(o.inst.ea, AccessType::Generic, u8u16::u8(new_val));
+        let new_val = c.reg.cc.ror_u8(data);
+        c._write_u8u16(AccessType::Generic, o.inst.ea, u8u16::u8(new_val))?;
     } else {
         assert!(reg == registers::Name::A || reg == registers::Name::B);
-        let data = o.new_ctx.get_register(reg).u8();
-        let new_val = o.new_ctx.cc.ror_u8(data);
-        o.new_ctx.set_register(reg, u8u16::u8(new_val));
+        let data = c.reg.get_register(reg).u8();
+        let new_val = c.reg.cc.ror_u8(data);
+        c.reg.set_register(reg, u8u16::u8(new_val));
     }
     Ok(())
 }
-fn __com(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __com(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     let reg = o.inst.flavor.desc.reg;
     if reg == registers::Name::Z {
         let data = c._read_u8(AccessType::Generic, o.inst.ea, None)?;
-        let new_val = o.new_ctx.cc.com_u8(data);
-        o.write(o.inst.ea, AccessType::Generic, u8u16::u8(new_val));
+        let new_val = c.reg.cc.com_u8(data);
+        c._write_u8u16(AccessType::Generic, o.inst.ea, u8u16::u8(new_val))?;
     } else {
         assert!(reg == registers::Name::A || reg == registers::Name::B);
-        let data = o.new_ctx.get_register(reg).u8();
-        let new_val = o.new_ctx.cc.com_u8(data);
-        o.new_ctx.set_register(reg, u8u16::u8(new_val));
+        let data = c.reg.get_register(reg).u8();
+        let new_val = c.reg.cc.com_u8(data);
+        c.reg.set_register(reg, u8u16::u8(new_val));
     }
     Ok(())
 }
-fn __mul(_: &Core, o: &mut Outcome) -> Result<(), Error> {
-    let a = o.new_ctx.get_register(registers::Name::A);
-    let b = o.new_ctx.get_register(registers::Name::B);
-    let d = o.new_ctx.cc.mul(a.u8(), b.u8());
-    o.new_ctx.set_register(registers::Name::D, u8u16::u16(d));
+fn __mul(c: &mut Core, _o: &mut Outcome) -> Result<(), Error> {
+    let a = c.reg.get_register(registers::Name::A);
+    let b = c.reg.get_register(registers::Name::B);
+    let d = c.reg.cc.mul(a.u8(), b.u8());
+    c.reg.set_register(registers::Name::D, u8u16::u16(d));
     Ok(())
 }
 
-fn __err(_: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __err(_c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     panic!(
         "No implementation for instruction {}!",
         o.inst.flavor.desc.name
     );
 }
 
-fn __meta(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __meta(c: &mut Core, o: &mut Outcome) -> Result<(), Error> {
     o.meta = Meta::from_opcode(o.inst.flavor.detail.op);
     if o.meta == Some(Meta::CWAI) {
         // CWAI performs an andcc (immediate)
         let data = c._read_u8(AccessType::Generic, o.inst.ea, None)?;
-        o.new_ctx.cc.reg &= data;
+        c.reg.cc.reg &= data;
     }
     Ok(())
 }

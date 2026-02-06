@@ -1,3 +1,4 @@
+#[cfg(target_os = "none")]
 pub mod ps2;
 pub mod usb;
 

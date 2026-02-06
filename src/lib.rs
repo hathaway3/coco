@@ -26,6 +26,8 @@ pub mod obj;
 pub mod parse;
 pub mod pia;
 // pub mod pico;
+#[cfg(test)]
+pub mod cpu_test;
 pub mod program;
 pub mod registers;
 pub mod runtime;

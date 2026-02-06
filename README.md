@@ -148,7 +148,17 @@ Still does.
 <br clear="left"/>  
 ## Features
 
-This project builds on my [6809 simulator](https://github.com/gorsat/6809) project. 
+This project builds on my [6809 simulator](https://github.com/gorsat/6809) project.
+
+## Recent Changes
+
+### CPU Core Optimization (Feb 2026)
+The CPU execution core has been refactored for improved performance on the RP2350 target:
+- **Direct Execution Model**: Instructions now modify the CPU state (`Core`) directly, eliminating the overhead of copying the register set into an intermediate `Outcome` object for each instruction.
+- **Reduced Allocations**: The `Outcome` struct is now lightweight, removing the per-instruction `Vec` allocation for pending memory writes.
+- **Cleaner Borrow Semantics**: The `process_addressing_mode` function was refactored to avoid borrow checker conflicts, enabling cleaner, more idiomatic Rust.
+
+These changes result in a smaller code footprint and faster execution, which is critical for the resource-constrained RP2350 microcontroller. 
 As such, many features of that program are included in this one like rich debugging and the 
 ability to directly load and run 6809 assembly language code rather than just binaries. 
 The picture above shows the emulator running the included [hello.asm](/hello.asm) program.
