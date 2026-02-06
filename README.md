@@ -7,6 +7,7 @@ A TRS-80 Color Computer emulator ported to the Raspberry Pi Pico 2 W (RP2350).
 
 > [!NOTE]
 > This project has recently been ported to run on the **Raspberry Pi RP2350** microcontroller (e.g., Raspberry Pi Pico 2).
+> The RP2350 has 520KB of SRAM, with approximately **460-480KB available** for application use after system overhead.
 
 ## Quick Start (One-Click Build)
 
@@ -92,6 +93,19 @@ To add a real CoCo boot ROM:
   - **USB Keyboard**: Placeholder (Not yet implemented).
   - Debug output is available via the USB Serial / UART console.
 
+> [!WARNING]
+> GPIO 28 and 29 are the last available GPIO pins on the RP2350. Using them for PS/2 keyboard limits expansion options.
+
+## Memory Usage
+
+The firmware uses the following memory allocations:
+- **RAM_DISK**: 64KB (6809 address space)
+- **DISPLAY_BUFFER**: 98KB (256×192 pixels @ 16-bit RGB565)
+- **HEAP**: 128KB (for dynamic allocations)
+- **Total Static**: ~290KB
+
+This leaves approximately **170-190KB** for stack, DVI buffers, and system overhead.
+
 ## Host Usage (macOS/Linux/Windows)
 
 You can still run the emulator on your Mac/PC for development:
@@ -99,6 +113,22 @@ You can still run the emulator on your Mac/PC for development:
 cargo run
 ```
 Note: This builds a dummy test harness for the library when strictly targeting the embedded configuration, but regular `cargo build` will verify the library code compiles.
+
+## Troubleshooting
+
+### Build Issues
+- **"libudev not found" (Linux)**: Install `libudev-dev` (Debian/Ubuntu) or `libudev-devel` (Fedora/RHEL)
+- **"target not found"**: Run `rustup target add thumbv8m.main-none-eabihf`
+- **"elf2uf2-rs not found"**: Run `cargo install elf2uf2-rs --locked`
+
+### Deployment Issues
+- **Pico not appearing as drive**: Ensure you're holding BOOTSEL while plugging in USB
+- **Firmware not running after copy**: Try unplugging and replugging the Pico
+- **No display output**: Verify DVI pinout matches your board (see `pico.rs` line 100)
+
+### Runtime Issues
+- **Crashes or freezes**: May indicate memory exhaustion; consider reducing heap size
+- **PS/2 keyboard not working**: Check GPIO connections and ensure 5V/3.3V compatibility
 
 ## License
 

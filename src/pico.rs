@@ -32,7 +32,7 @@ mod embedded {
     // Allocate a heap for embedded-alloc
     #[global_allocator]
     static HEAP: Heap = Heap::empty();
-    const HEAP_SIZE: usize = 128 * 1024; // 128KB heap
+    const HEAP_SIZE: usize = 96 * 1024; // 96KB heap (reduced from 128KB for better memory efficiency)
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
     // Core 1 Stack

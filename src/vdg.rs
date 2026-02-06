@@ -179,7 +179,7 @@ pub const BLOCK_DIM_Y: usize = 12;
 pub const BLOCK_COLS: usize = SCREEN_DIM_X / BLOCK_DIM_X;
 pub const BLOCK_ROWS: usize = SCREEN_DIM_Y / BLOCK_DIM_Y;
 pub const VRAM_SIZE: usize = (SCREEN_DIM_X * SCREEN_DIM_Y) / 8;
-pub const ALWAYS_RENDER: bool = true;
+pub const ALWAYS_RENDER: bool = false; // Set to false to skip rendering when display hasn't changed
 
 pub struct Char {
     font_index: usize,
