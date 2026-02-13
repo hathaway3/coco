@@ -192,131 +192,53 @@ mod embedded {
             dm.update();
 
             // Build DVI Display List
+            // VGA 640x480 @ 60Hz. VERTICAL_REPEAT=1, so we must produce all 480 scanlines.
+            // VDG renders 256x192 pixels in RGB555 format.
+            // We center 256 pixels horizontally (192px black margin each side)
+            // and double each of 192 VDG lines vertically (2x) for 384 active lines.
+            // Layout: 48 top margin + 384 active + 48 bottom margin = 480 lines.
             let (mut rb, mut sb) = start_display_list();
 
-            // Standard VGA 640x480. We use 320x240 logic (doubled by DVI driver repeat)
-            // But we need to output 640 pixels per line horizontally if HSTX is 1:1?
-            // Wait, HSTX multiple is 2. `bit_clk / HSTX_MULTIPLE`.
-            // So pixel clock is efficient.
-            // If I output 320 pixels, and DVI engine expects 640?
-            // Actually `init_display_swapcell(width)`. Width is likely 640.
-            // `video_scan_copy_16` copies pixels.
-            // If I want 256 pixels centered:
-            // 640 width.
-            // VDG: 256 pixels.
-            // Margins: (640-256)/2 = 192.
+            let v_margin = 48u32; // Top/bottom margin (480 - 384) / 2
+            let v_active = 192u32; // VDG lines (each output twice = 384 scanlines)
+            let h_margin = 192u32; // Left/right margin (640 - 256) / 2
+            let h_active = 256usize;
+            let words_per_line = h_active / 2; // 128 u32s per VDG line (2 RGB555 pixels per u32)
 
-            // Render logic:
-            // Lines 0..24: Black (solid)
-            // Lines 24..216: Black(192), VDG(256), Black(192)
-            // Lines 216..240: Black (solid)
-            // (Total 240 lines, vertical repeat = 2 => 480)
-
-            // Margin scanlines
-            let v_margin = 24;
-            // Top Margin
-            rb.begin_stripe(v_margin);
-            rb.end_stripe();
-            sb.begin_stripe(v_margin);
-            sb.solid(640, 0); // Black
-            sb.end_stripe();
-
-            // Active Area (192 lines)
-            let v_active = 192;
-            let h_margin = 192;
-            let h_active = 256;
-
-            rb.begin_stripe(v_active);
-
-            // VDG Framebuffer view as u32
+            // VDG Framebuffer viewed as u32 (pairs of RGB555 pixels)
             let display_u32 = unsafe {
                 core::slice::from_raw_parts(dm.display.as_ptr() as *const u32, dm.display.len() / 2)
             };
 
-            // Blit lines
-            // Since rb.tile64 operates relatively, we need to loop?
-            // No, we can just say "for each line in stripe, do X"?
-            // Wait. `Renderlist` contains instructions.
-            // `tile64` adds instructions to blit ONE TILE row?
-            // `dvi_main` loop: `scan_render.render_scanline` executes the list for ONE LINE.
-            // `Renderlist` is re-executed for every scanline in the stripe!
-            // Crucial: The Renderlist is STATIC for the stripe height.
-            // If I use `tile64`, it blits the SAME data for every line in the stripe.
-            // This is bad for a full bitmap!
-            // `pico-dvi-rs` design assumes TILES (sprites) or TEXT where the same pattern repeats?
-            // OR, `ScanRender` advances the source pointer?
-            // `render_scanline`:
-            // `render_engine` takes `render_ptr`.
-            // `render_engine` executes.
-            // `self.render_y += 1`.
-            // `if self.render_y == stripe_height { ... }`
-            // It seems `Renderlist` is designed for sprites.
-            // BUT: `init_display_swapcell`?
-            // If I want a full bitmap, I might need 192 stripes of height 1.
-            // That would accept unique data for each line.
+            // Top Margin (solid black)
+            rb.begin_stripe(v_margin);
+            rb.end_stripe();
+            sb.begin_stripe(v_margin);
+            sb.solid(640, 0);
+            sb.end_stripe();
 
-            // Let's do 192 stripes of height 1.
-            // It is less efficient than 1 stripe, but required for unique content per line if renderlist doesn't auto-advance source.
-            // `tile64` takes `tile`. `tile` is a slice.
-            // If I create a Renderlist with 192 "stripes", each blitting a different slice of VDG.
-            // That works.
-
-            // End the top margin stripe first (done above).
-
-            // Active Area Loop
+            // Active Area: 192 VDG lines, each output twice (384 scanlines)
             for line in 0..v_active {
-                rb.begin_stripe(1);
-                // Left margin (implicitly 0/black if we don't draw?)
-                // `render_engine` zeroes the buffer?
-                // `LineBuf::zero()` is static.
-                // `render_scanline` calls `render_engine`.
-                // `render_engine` usually clears or overwrites?
-                // If we don't write, it likely retains garbage or prev line?
-                // `ScanRender` does NOT clear `LINE_BUF`.
-                // Converting `tile64`... we should probably clear or ensure full overwrite.
-                // `video_scan_copy_16` copies whatever is in the buffer.
-                // If I only blit central 256 pixels, sides might be garbage.
-                // I should fill sides with black?
-                // `rb` doesn't have `solid`.
-                // But I can blit a "black" tile.
-                // Let's assuming starting with black is hard.
-                // Maybe I can just use `sb.solid` for margins?
-                // `Scanlist` runs AFTER `render_engine`.
-                // `Scanlist` instructions: `solid(192)`, `copy(256)`, `solid(192)`.
-                // Yes! I can mix.
+                let start_idx = (line as usize) * words_per_line;
+                let line_slice = &display_u32[start_idx..start_idx + words_per_line];
 
-                // Render: Blit 256 pixels (128 u32s) to index 0?
-                // Wait. `copy_pixels` copies from START of line buffer.
-                // So I must render the VDG pixels at the START of `LineBuf` (x=0).
-                // Then `Scanlist` will: `solid(192)`, `copy(256)`, `solid(192)`.
-                // Wait. `copy` copies TMDS? No, `copy` copies FROM `LineBuf`.
-                // If I `solid(192)` first, that emits 192 pixels of TMDS. `LineBuf` pointer is NOT advanced (unless I added code for that? No, `solid` uses r5/count).
-                // Then `copy(256)`. This reads 256 pixels from `LineBuf`.
-                // Since `line_buf_ptr` passed to `video_scan` is the start.
-                // `video_scan_copy_16` reads from `r1` (input).
-                // `r1` is updated by `ldmia r1!`.
-                // So if I call `copy` multiple times, it advances.
-                // But `solid` does NOT touch `r1`.
-                // So: `solid(192)` (uses no input). `copy(256)` (consumes 256 input pixels). `solid(192)` (uses no input).
-                // This implies `LineBuf` only needs to contain the 256 pixels of content!
-                // So I render to `x=0` in `Renderlist`.
+                // Output each VDG line twice for 2x vertical scaling
+                for _repeat in 0..2 {
+                    // Render: copy raw RGB555 pixel data into LineBuf
+                    rb.begin_stripe(1);
+                    rb.blit_1bpp(line_slice, words_per_line, 1);
+                    rb.end_stripe();
 
-                // Slice for this line:
-                let start_idx = (line as usize) * (h_active / 2); // u32 index
-                let end_idx = start_idx + (h_active / 2);
-                let line_slice = &display_u32[start_idx..end_idx];
-
-                rb.tile64(line_slice, 0, 128); // Blit 128 u32s (256 pixels)
-                rb.end_stripe();
-
-                sb.begin_stripe(1);
-                sb.solid(h_margin, 0); // Left 192
-                sb.copy_pixels(h_active as u32); // Center 256
-                sb.solid(h_margin, 0); // Right 192
-                sb.end_stripe();
+                    // Scan: black margin, pixel data, black margin
+                    sb.begin_stripe(1);
+                    sb.solid(h_margin, 0);
+                    sb.copy_pixels(h_active as u32);
+                    sb.solid(h_margin, 0);
+                    sb.end_stripe();
+                }
             }
 
-            // Bottom Margin
+            // Bottom Margin (solid black)
             rb.begin_stripe(v_margin);
             rb.end_stripe();
             sb.begin_stripe(v_margin);

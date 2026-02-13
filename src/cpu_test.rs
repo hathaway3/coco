@@ -63,3 +63,42 @@ fn test_add_set_flags() {
     assert!(!core.reg.cc.is_set(registers::CCBit::Z));
     assert!(!core.reg.cc.is_set(registers::CCBit::N));
 }
+
+#[test]
+fn test_sta_extended() {
+    let mut core = create_core();
+    // Set A = $42, then STA $2000 -> B7 20 00 (Extended addressing)
+    core.reg.a = 0x42;
+    let prog = [0xB7, 0x20, 0x00];
+    core.load_bytes(&prog, 0x1000).unwrap();
+    core.reg.pc = 0x1000;
+
+    core.exec_one().unwrap();
+
+    // Verify A was stored to memory at $2000
+    assert_eq!(
+        core._read_u8(crate::memory::AccessType::Generic, 0x2000, None)
+            .unwrap(),
+        0x42
+    );
+    assert_eq!(core.reg.pc, 0x1003);
+}
+
+#[test]
+fn test_adda_carry_flag() {
+    let mut core = create_core();
+    // Set A = $FF, then ADDA #$01 -> 8B 01. Should overflow and set carry.
+    core.reg.a = 0xFF;
+    let prog = [0x8B, 0x01];
+    core.load_bytes(&prog, 0x1000).unwrap();
+    core.reg.pc = 0x1000;
+
+    core.exec_one().unwrap();
+
+    assert_eq!(core.reg.a, 0x00); // $FF + $01 = $00 (wraps)
+    assert!(core.reg.cc.is_set(registers::CCBit::Z), "Result is zero");
+    assert!(
+        core.reg.cc.is_set(registers::CCBit::C),
+        "Carry should be set"
+    );
+}

@@ -38,6 +38,8 @@ pub mod sound;
 pub mod test;
 pub mod u8oru16;
 pub mod vdg;
+#[cfg(test)]
+pub mod vdg_test;
 
 // Re-export common types for external use (like main.rs) and internal modules via use super::*;
 pub use crate::acia::Acia;
@@ -78,4 +80,4 @@ pub const SCREEN_DIM_X: usize = 256;
 pub const SCREEN_DIM_Y: usize = 192;
 pub static mut RAM_DISK: [u8; 0x10000] = [0u8; 0x10000];
 pub static mut DISPLAY_BUFFER: [u16; SCREEN_DIM_X * SCREEN_DIM_Y] =
-    [0x2700; SCREEN_DIM_X * SCREEN_DIM_Y];
+    [0x0000; SCREEN_DIM_X * SCREEN_DIM_Y];
