@@ -1,5 +1,4 @@
 use super::*;
-use core::cell::RefCell;
 
 // status register bits
 const RDRF: u8 = 0b00000001; // receive data register full
@@ -7,7 +6,7 @@ const TDRE: u8 = 0b00000010; // transmit data register empty
 
 pub struct Acia {
     pub addr: u16,
-    recv_cache: RefCell<Option<u8>>,
+    recv_cache: Option<u8>,
     tty_count: Arc<Mutex<i32>>,
 }
 
@@ -33,13 +32,12 @@ impl Acia {
         }
         Ok(())
     }
-    pub fn read(&self, addr: u16) -> Result<u8, Error> {
+    pub fn read(&mut self, addr: u16) -> Result<u8, Error> {
         let mut flags = 0u8;
         if addr == self.status_register_address() {
             // if there is some data ready to read then set the RDRF bit
-            let pending_data = self.recv_cache.borrow();
-            if pending_data.is_some() {
-                acia_dbg!("ACIA status - pending data {:02X}", pending_data.unwrap());
+            if let Some(_pending_data) = self.recv_cache {
+                acia_dbg!("ACIA status - pending data {:02X}", pending_data);
                 flags |= RDRF;
             }
             // if we have a TTY connected then set the TDRE flag
@@ -50,8 +48,7 @@ impl Acia {
             Ok(flags)
         } else if addr == self.data_register_address() {
             // try to get a byte from our cache
-            let mut pending_data = self.recv_cache.borrow_mut();
-            if let Some(byte) = pending_data.take() {
+            if let Some(byte) = self.recv_cache.take() {
                 acia_dbg!("ACIA read {:02X}", byte);
                 Ok(byte)
             } else {
@@ -71,7 +68,7 @@ impl Acia {
 
         Ok(Acia {
             addr,
-            recv_cache: RefCell::new(None),
+            recv_cache: None,
             tty_count,
         })
     }

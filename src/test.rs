@@ -1,4 +1,3 @@
-#![allow(unused)]
 //! TestCriterion lines included in an assembly language program enable
 //! automated testing of the program by the 6809 simulator
 //!
@@ -33,7 +32,9 @@
 //! - `;! label = a` Passes if byte at address _label_ equals value of register A
 //! - `;! b = #'C` Passes if register B holds the value of ascii char 'C' (0x43)
 //!
-use super::*;
+use crate::registers;
+use core::fmt;
+use alloc::string::String;
 #[derive(Debug)]
 pub enum RegOrAddr {
     Reg(registers::Name),

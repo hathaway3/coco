@@ -32,33 +32,7 @@ impl Core {
         self._write_u8u16(memory::AccessType::System, 0xfffe, u8u16::u16(addr))
     }
     /// Displays current perf information to stdout
-    #[allow(dead_code)]
-    fn report_perf(&self) {
-        /*
-        if !config::ARGS.perf {
-            return;
-        }
-        */
-        // let total_time_ms = 1; // dummy
-        info!(
-            "Executed {} instructions; effective clock: {} cycles",
-            self.instruction_count, self.clock_cycles,
-        );
-        /*
-        info!("\t{:<10} {:>6} {:>5}", "Phase", "Time", "%");
-        info!("\t-----------------------");
-        macro_rules! perf_row {
-            ($name:expr, $id:expr) => {
-                info!("\t{:<10} {:>6.3}", $name, $id.as_secs_f32(),)
-            };
-        }
-        perf_row!("meta", self.meta_time);
-        perf_row!("prep", self.prep_time);
-        perf_row!("eval", self.eval_time);
-        perf_row!("commit", self.commit_time);
-        perf_row!("total", Duration::ZERO);
-        */
-    }
+
     /// Starts executing instructions at the current program counter.  
     /// Does not set or read any registers before attempting to execute.  
     /// Will attempt to execute until an EXIT psuedo-instruction or an
@@ -80,41 +54,20 @@ impl Core {
                     self.fault(temp_pc, &e);
                 }
             }
-            /*
-            if let Some(time) = config::ARGS.time {
-                if self.start_time.elapsed() > Duration::from_secs_f32(time) {
-                    info!("Terminating because the specified time has expired.");
-                    break;
-                }
-            }
-            */
         }
-        /*
-        if config::ARGS.perf {
-            self.report_perf()
-        }
-        */
         Ok(())
     }
     /// Helper function for exec.  
     /// Wraps calls to exec_next and adds debug checks and interrupt processing.
     pub fn exec_one(&mut self) -> Result<(), Error> {
-        let _function_start = self.clock_cycles;
-        // let mut meta_start: Option<u64> = None;
-        let _expected_duration_cycles: Option<u64> = None;
+
         if config::debug() && self.pre_instruction_debug_check(self.reg.pc) {
             self.debug_cli()?;
         }
         let temp_pc = self.reg.pc;
         if !self.in_cwai && !self.in_sync {
             let outcome = self.exec_next(self.list_mode.is_none())?;
-            // meta_start = Some(self.clock_cycles);
-            // if paying attention to timing then track how long this instruction should have taken
-            /*
-            expected_duration = self
-                .min_cycle
-                .and_then(|min| min.checked_mul(outcome.inst.flavor.detail.clk as u32));
-            */
+
             // check for meta instructions (interrupts, SYNC, CWAI, EXIT)
             if let Some(meta) = outcome.meta.as_ref() {
                 let it = meta.to_interrupt_type();
@@ -148,11 +101,7 @@ impl Core {
                 self.post_instruction_debug_check(temp_pc, &outcome);
             }
         }
-        /*
-        if meta_start.is_none() {
-            meta_start = Some(self.clock_cycles);
-        }
-        */
+
         let mut irq;
         let mut firq = false;
         // check for work that needs to be done on hsync
@@ -200,11 +149,7 @@ impl Core {
                 }
             }
         }
-        /*
-        if let Some(ms) = meta_start {
-             self.meta_time += Duration::from_micros(self.clock_cycles - ms);
-        }
-        */
+
         Ok(())
     }
 
@@ -242,7 +187,7 @@ impl Core {
     /// then sets PC to the vector for the given interrupt.
     pub fn start_interrupt(&mut self, it: crate::cpu::InterruptType) -> Result<(), Error> {
         assert!(!self.in_sync);
-        // info!("start_interrupt {:?}, vector {:04x}", it, it.vector());
+
         // if this is an IRQ then we need to push (almost) everything on the stack
         let mut entire = false;
         use crate::cpu::InterruptType::*;
@@ -290,7 +235,7 @@ impl Core {
     /// If list_mode.is_some() then the instruction is not evaluated and Outcome reflects
     /// the state prior to the instruction.
     pub fn exec_next(&mut self, _commit: bool) -> Result<instructions::Outcome, Error> {
-        // let mut start = Instant::now();
+
         let mut inst = instructions::Instance::new(self.reg.pc, None);
         let mut op16: u16 = 0; // 16-bit representation of the opcode
 
@@ -326,20 +271,17 @@ impl Core {
         // adjust the program counter before evaluating instructions
         self.reg.pc = self.checked_pc_add(self.reg.pc, inst.size, &inst)?;
         let mut o = instructions::Outcome::new(inst);
-        // track how long all this preparation took
-        // self.prep_time += start.elapsed();
-        // start = Instant::now();
+
 
         // evaluate the instruction if we're not in list mode
         if self.list_mode.is_none() {
             (o.inst.flavor.desc.eval)(self, &mut o)?;
         }
-        // self.eval_time += start.elapsed();
-        // start = Instant::now();
+
 
         // if caller wants to commit the changes and we're not in list mode then commit now
 
-        // self.commit_time += start.elapsed();
+
 
         self.instruction_count += 1;
         self.clock_cycles += o.inst.flavor.detail.clk as u64;

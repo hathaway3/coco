@@ -1,9 +1,9 @@
-use super::*;
-use crate::pia::*;
-use crate::sam::*;
+use crate::pia::{Pia0, Pia1};
+use crate::sam::Sam;
 use spin::Mutex;
-// use crate::sound;
-use crate::vdg::*;
+use alloc::sync::Arc;
+use crate::vdg::{Vdg, VdgMode};
+use crate::{RAM_DISK, DISPLAY_BUFFER};
 
 // DeviceManager should be instantiated on the main thread and then clones of its
 // member fields can be sent to other threads. DeviceManger methods must only be
@@ -17,10 +17,15 @@ pub struct DeviceManager {
     pub pia1: Arc<Mutex<Pia1>>,
 }
 
-impl DeviceManager {
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
+impl Default for DeviceManager {
+    fn default() -> Self {
         Self::with_ram(unsafe { &mut *(&raw mut RAM_DISK) }, 0)
+    }
+}
+
+impl DeviceManager {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn with_ram(ram: &'static mut [u8], vram_offset: usize) -> Self {
@@ -56,7 +61,6 @@ impl DeviceManager {
     }
 
     pub fn update(&mut self) {
-        let mut _redraw = false;
         {
             // pia0 handles keyboard input
             let mut _pia0 = self.pia0.lock();
@@ -81,16 +85,7 @@ impl DeviceManager {
             vdg.set_mode(mode);
             vdg.set_vram_offset(vram_offset);
             // convert contents of VRAM to pixels for display
-            _redraw = vdg.render(&mut self.display, css);
+            vdg.render(&mut self.display, css);
         }
-        /*
-        if redraw {
-            self.window
-                .update_with_buffer(&self.display, SCREEN_DIM_X, SCREEN_DIM_Y)
-                .expect("minifb update_with_buffer failed");
-        } else {
-            self.window.update();
-        }
-        */
     }
 }

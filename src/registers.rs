@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 /// MC6809E register set helpers
 use super::*;
 

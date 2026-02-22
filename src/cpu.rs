@@ -40,7 +40,7 @@ pub struct Core {
     pub pia0: Arc<Mutex<crate::pia::Pia0>>,
     pub pia1: Arc<Mutex<crate::pia::Pia1>>,
     pub reg: crate::registers::Set, // the full set of 6809 registers
-    pub acia: Option<crate::acia::Acia>, // ACIA simulator
+    pub acia: Option<core::cell::RefCell<crate::acia::Acia>>, // ACIA simulator
     pub reset_vector: Option<u16>,  // overrides the reset vector if set
     /* interrupt processing */
     pub cart_pending: bool, // true if cart is loaded but hasn't been run yet
@@ -97,7 +97,7 @@ impl Core {
             pia0,
             pia1,
             reg: { Default::default() },
-            acia: acia_addr.map(|a| acia::Acia::new(a).expect("failed to start ACIA")),
+            acia: acia_addr.map(|a| core::cell::RefCell::new(acia::Acia::new(a).expect("failed to start ACIA"))),
             reset_vector: None,
             cart_pending: false,
             in_cwai: false,
@@ -132,7 +132,7 @@ impl Core {
             history: None,
             step_mode: debug::StepMode::Off,
             next_linear_step: 0,
-            trace: unsafe { config::ARGS.trace },
+            trace: unsafe { config::ARGS.trace.load(core::sync::atomic::Ordering::Relaxed) },
         }
     }
 
@@ -216,17 +216,7 @@ impl Core {
         Ok(loaded)
     }
 
-    /*
-    pub fn load_bin(&mut self, bin_path: &Path, addr: u16) -> Result<usize, Error> {
-        // ...
-    }
-    */
 
-    /*
-    pub fn load_cart(&mut self, cart_path: &Path) -> Result<usize, Error> {
-        // ...
-    }
-    */
 
     pub fn load_program(&mut self, program: &Program) -> Result<u16, Error> {
         let mut extent = 0u16;

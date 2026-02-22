@@ -1,4 +1,3 @@
-#![allow(unused_macros, dead_code)]
 
 #[macro_export]
 macro_rules! verbose_println {
@@ -56,6 +55,12 @@ macro_rules! syntax_err_line {
 macro_rules! syntax_err_ctx {
     ($ctx:expr,$msg:expr $(,)?) => {
         Error::new($crate::ErrorKind::Syntax, $ctx, "")
+    };
+}
+
+macro_rules! instruction_invalid {
+    ($ctx:expr, $($msg:expr),* $(,)?) => {
+        Error::new($crate::ErrorKind::Runtime, $ctx, "")
     };
 }
 

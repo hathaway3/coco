@@ -38,13 +38,6 @@ impl Error {
     }
 }
 
-/*
-#[cfg(not(target_os = "none"))]
-// impl From<std::io::Error> for Error {
-//     fn from(e: std::io::Error) -> Self { Error::new(ErrorKind::IO, None, e.to_string().as_str()) }
-}
-*/
-
 impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}: {}", red!("cpu::Error"), self.msg)
@@ -61,4 +54,4 @@ impl fmt::Display for Error {
         res
     }
 }
-// // impl std::error.Error for Error {}
+

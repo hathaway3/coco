@@ -1,6 +1,10 @@
 use crate::pia::Pia;
 
-use super::*;
+use crate::cpu::Core;
+use crate::error::Error;
+use crate::u8oru16::u8u16;
+use crate::config;
+
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 
@@ -17,7 +21,8 @@ impl Core {
     #[inline(always)]
     pub fn _read_u8(&self, _: AccessType, addr: u16, data: Option<&mut u8>) -> Result<u8, Error> {
         // first check to see if this address is overridden by the ACIA
-        if let Some(acia) = self.acia.as_ref() {
+        if let Some(acia_rc) = self.acia.as_ref() {
+            let mut acia = acia_rc.borrow_mut();
             if acia.owns_address(addr) {
                 return acia.read(addr);
             }
@@ -114,7 +119,8 @@ impl Core {
     #[inline(always)]
     pub fn _write_u8(&mut self, at: AccessType, addr: u16, data: u8) -> Result<(), Error> {
         // first check to see if this address is overridden by the ACIA
-        if let Some(acia) = self.acia.as_mut() {
+        if let Some(acia_rc) = self.acia.as_mut() {
+            let mut acia = acia_rc.borrow_mut();
             if acia.owns_address(addr) {
                 return acia.write(addr, data);
             }

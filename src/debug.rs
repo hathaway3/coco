@@ -378,7 +378,7 @@ impl Core {
             return true;
         }
         // if break_start is true then always break into debugger when the instruction at program_start is about to be executed
-        if self.program_start == pc && unsafe { config::ARGS.break_start } {
+        if self.program_start == pc && unsafe { config::ARGS.break_start.load(core::sync::atomic::Ordering::Relaxed) } {
             return true;
         }
         // if we're in step mode then we wait for a keypress before executing another instruction

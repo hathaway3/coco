@@ -321,7 +321,7 @@ impl Assembler {
         #[cfg(not(target_os = "none"))]
         self.post_build(program)?;
         println!("Build complete.");
-        if unsafe { config::ARGS.debug } || unsafe { config::ARGS.trace } {
+        if unsafe { config::ARGS.debug.load(core::sync::atomic::Ordering::Relaxed) } || unsafe { config::ARGS.trace.load(core::sync::atomic::Ordering::Relaxed) } {
             // program.write_listing(&mut io::stdout())?;
         }
         Ok(())

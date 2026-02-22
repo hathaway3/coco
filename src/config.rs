@@ -1,39 +1,37 @@
-// use super::*;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 pub struct Args {
-    pub debug: bool,
-    pub trace: bool,
-    pub no_auto_sym: bool,
-    pub verbose: bool,
-    pub break_start: bool,
+    pub debug: AtomicBool,
+    pub trace: AtomicBool,
+    pub no_auto_sym: AtomicBool,
+    pub verbose: AtomicBool,
+    pub break_start: AtomicBool,
 }
 
-pub static mut ARGS: Args = Args {
-    debug: false,
-    trace: false,
-    no_auto_sym: true,
-    verbose: false,
-    break_start: false,
+pub static ARGS: Args = Args {
+    debug: AtomicBool::new(false),
+    trace: AtomicBool::new(false),
+    no_auto_sym: AtomicBool::new(true),
+    verbose: AtomicBool::new(false),
+    break_start: AtomicBool::new(false),
 };
 
-pub fn init() {}
-
 pub fn auto_load_syms() -> bool {
-    unsafe { !ARGS.no_auto_sym && ARGS.debug }
+    !ARGS.no_auto_sym.load(Ordering::Relaxed) && ARGS.debug.load(Ordering::Relaxed)
 }
 
 pub fn debug() -> bool {
-    unsafe { ARGS.debug }
+    ARGS.debug.load(Ordering::Relaxed)
 }
 
 pub fn trace() -> bool {
-    unsafe { ARGS.trace }
+    ARGS.trace.load(Ordering::Relaxed)
 }
 
 pub fn help_humans() -> bool {
-    unsafe { ARGS.debug || ARGS.trace }
+    ARGS.debug.load(Ordering::Relaxed) || ARGS.trace.load(Ordering::Relaxed)
 }
 
 pub fn verbose() -> bool {
-    unsafe { ARGS.verbose }
+    ARGS.verbose.load(Ordering::Relaxed)
 }

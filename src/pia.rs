@@ -22,7 +22,6 @@ struct PiaSide {
     c2: bool,
 }
 
-#[allow(unused)]
 impl PiaSide {
     fn manual_c2_trigger(&self) -> bool {
         self.cr & 0x30 == 0x30
@@ -120,62 +119,10 @@ impl PiaSide {
     }
 }
 
-/*
-use minifb::{Key, MouseButton, MouseMode};
-*/
-
-// use crate::vdg;
-
-/*
-#[derive(Debug)]
-struct KeyMap {
-    from: Key,
-    to: &'static [(usize, usize)],
-}
-// keys from modern keyboard that didn't exist on coco
-#[rustfmt::skip]
-static ONE_TO_N: &[KeyMap] = &[
-    KeyMap {from: Key::Backspace, to: &[(3,5)]},
-    KeyMap {from: Key::LeftShift, to: &[(6,7)]},
-    KeyMap {from: Key::Apostrophe, to: &[(6,7),(4,7)]},
-    KeyMap {from: Key::Equal, to: &[(6,7),(5,5)]},
-];
-// shift+key combos from modern keyboard that don't match coco's mapping
-#[rustfmt::skip]
-static SHIFT_ONE_TO_N: &[KeyMap] = &[
-    KeyMap {from:Key::Key2, to:&[(0,0)]},
-    KeyMap {from:Key::Semicolon, to:&[(5,2)]},
-    KeyMap {from:Key::Apostrophe, to:&[(6,7),(4,2)]},
-    KeyMap {from:Key::Key7, to:&[(6,7),(4,6)]},
-    KeyMap {from:Key::Key8, to:&[(6,7),(5,2)]},
-    KeyMap {from:Key::Key9, to:&[(6,7),(5,0)]},
-    KeyMap {from:Key::Key0, to:&[(6,7),(5,1)]},
-    KeyMap {from:Key::Equal, to:&[(6,7),(5,3)]},
-];
-///
-/// Note: Both LeftShift and RightShift map to SHFT
-///
-#[rustfmt::skip]
-const KEY_MATRIX: &[[minifb::Key;8];8] = &[
-    [Key::Unknown /* @ */, Key::A, Key::B, Key::C, Key::D, Key::E, Key::F, Key::G],
-    [Key::H, Key::I, Key::J, Key::K, Key::L, Key::M, Key::N, Key::O],
-    [Key::P, Key::Q, Key::R, Key::S, Key::T, Key::U, Key::V, Key::W],
-    [Key::X, Key::Y, Key::Z, Key::Up, Key::Down, Key::Left, Key::Right, Key::Space],
-    [Key::Key0, Key::Key1, Key::Key2, Key::Key3, Key::Key4, Key::Key5, Key::Key6, Key::Key7],
-    [Key::Key8, Key::Key9, Key::Unknown /* : */, Key::Semicolon, Key::Comma, Key::Minus, Key::Period, Key::Slash],
-    [Key::Enter, Key::Home /* CLR */, Key::Escape /* BRK */, Key::Unknown, Key::Unknown, Key::Unknown, Key::Unknown, Key::RightShift],
-    [Key::Unknown, Key::Unknown, Key::Unknown, Key::Unknown, Key::Unknown, Key::Unknown, Key::Unknown, Key::Unknown],
-];
-*/
-
 #[derive(Debug)]
 pub struct Pia0 {
     ab: [PiaSide; 2],
     col: [u8; 8],
-    /*
-    direct_map: BTreeMap<minifb::Key, Vec<(usize, usize)>>,
-    shift_map: BTreeMap<minifb::Key, Vec<(usize, usize)>>,
-    */
     joy_x: u8,
     joy_y: u8,
     joy_sw_1: bool,
@@ -232,32 +179,9 @@ impl Pia for Pia0 {
 impl Pia0 {
     #[allow(clippy::new_without_default)]
     pub fn new(pia1: Arc<Mutex<Pia1>>) -> Self {
-        /*
-        let mut direct_map: BTreeMap<minifb::Key, Vec<(usize, usize)>> = BTreeMap::new();
-        // add our KEY_MATRIX entries to the direct_map
-        #[allow(clippy::needless_range_loop)]
-        for row in 0..8usize {
-            for col in 0..8usize {
-                direct_map.insert(KEY_MATRIX[row][col], vec![(row, col); 1]);
-            }
-        }
-        // add our ONE_TO_N entries to the direct_map
-        ONE_TO_N.iter().for_each(|m| {
-            direct_map.insert(m.from, m.to.to_vec());
-        });
-        // now populate the shift_map with entries from SHIFT_ONE_TO_N
-        let mut shift_map: BTreeMap<minifb::Key, Vec<(usize, usize)>> = BTreeMap::new();
-        SHIFT_ONE_TO_N.iter().for_each(|m| {
-            shift_map.insert(m.from, m.to.to_vec());
-        });
-        */
         Pia0 {
             ab: [PiaSide::default(), PiaSide::default()],
             col: [0xff; 8],
-            /*
-            direct_map,
-            shift_map,
-            */
             joy_x: 0x1f,
             joy_y: 0x1f,
             joy_sw_1: false,
@@ -369,9 +293,6 @@ impl Pia0 {
 #[derive(Debug)]
 pub struct Pia1 {
     ab: [PiaSide; 2],
-    /*
-    sndr: mpsc::Sender<AudioSample>,
-    */
     sound_enabled: bool,
     dac_sel_a: bool,
     dac_sel_b: bool,
@@ -391,22 +312,12 @@ impl Pia for Pia1 {
                 // this is a write to the DAC and sound is enabled so send the data to the audio device
                 // convert 6-bit amplitude into f32 value between -1.0 and +1.0
                 let _fdata = ((self.ab[0].read_output() >> 2) as f32 - 31.0) / 32.0;
-                /*
-                self.sndr
-                    .send(AudioSample::new(fdata))
-                    .expect("error sending audio sample to channel");
-                */
             }
             2 => {
                 // check for single-bit sound in pia1-b data register
                 let bit = self.ab[1].read_output() & 2 == 2;
                 if bit != self.last_bit_sound {
                     let _fdata = if bit { 0.5 } else { -0.5 };
-                    /*
-                    self.sndr
-                        .send(AudioSample::new(fdata))
-                        .expect("error sending single bit audio to channel")
-                    */
                 }
                 self.last_bit_sound = bit;
             }
@@ -416,12 +327,9 @@ impl Pia for Pia1 {
     }
 }
 impl Pia1 {
-    pub fn new(/* sndr: mpsc::Sender<AudioSample> */) -> Self {
+    pub fn new() -> Self {
         Pia1 {
             ab: [PiaSide::default(), PiaSide::default()],
-            /*
-            sndr,
-            */
             sound_enabled: false,
             dac_sel_a: false,
             dac_sel_b: false,

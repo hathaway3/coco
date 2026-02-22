@@ -11,8 +11,6 @@ pub mod term;
 
 pub mod acia;
 pub mod assembler;
-#[cfg(not(target_os = "none"))]
-pub mod audio_test;
 pub mod config;
 pub mod cpu;
 pub mod debug;
@@ -25,15 +23,12 @@ pub mod memory;
 pub mod obj;
 pub mod parse;
 pub mod pia;
-// pub mod pico;
 #[cfg(test)]
 pub mod cpu_test;
 pub mod program;
 pub mod registers;
 pub mod runtime;
 pub mod sam;
-#[cfg(not(target_os = "none"))]
-pub mod sound;
 #[cfg(not(target_os = "none"))]
 pub mod test;
 pub mod u8oru16;
@@ -46,12 +41,6 @@ pub use crate::acia::Acia;
 pub use crate::cpu::Core;
 pub use crate::devmgr::DeviceManager;
 pub use crate::error::{Error, ErrorKind};
-// #[cfg(not(target_os = "none"))]
-// impl From<std::io::Error> for Error {
-//     fn from(e: std::io::Error) -> Self {
-//         Error::new(ErrorKind::IO, None, e.to_string().as_str())
-//     }
-// }
 pub use crate::pia::{Pia, Pia0, Pia1};
 pub use crate::program::*;
 pub use crate::sam::Sam;
