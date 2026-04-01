@@ -109,24 +109,19 @@ impl Core {
         // rather than checking between every instruction)
         if self.clock_cycles - self.hsync_prev >= HSYNC_PERIOD_CYCLES {
             self.hsync_prev = self.clock_cycles;
-            // check for hardware firq
             {
-                let mut pia1 = self.pia1.lock();
+                let mut pia = self.pia.lock();
+                // check for hardware firq
                 if self.cart_pending {
-                    firq = pia1.cart_firq();
+                    firq = pia.cart_firq();
                 }
-            }
-            // check for hardware irq
-            {
-                let mut pia0 = self.pia0.lock();
-                irq = pia0.hsync_irq();
-            }
-            // if it's vsync time, then also check for vsync irq
-            if self.clock_cycles - self.vsync_prev >= VSYNC_PERIOD_CYCLES {
-                self.vsync_prev = self.clock_cycles;
-                {
-                    let mut pia0 = self.pia0.lock();
-                    irq = irq || pia0.vsync_irq();
+                // check for hardware irq
+                irq = pia.hsync_irq();
+
+                // if it's vsync time, then also check for vsync irq
+                if self.clock_cycles - self.vsync_prev >= VSYNC_PERIOD_CYCLES {
+                    self.vsync_prev = self.clock_cycles;
+                    irq = irq || pia.vsync_irq();
                 }
             }
             if irq {

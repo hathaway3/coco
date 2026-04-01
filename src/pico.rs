@@ -152,8 +152,7 @@ mod embedded {
             unsafe { &mut *(&raw mut RAM_DISK) },
             dm.sam.clone(),
             dm.vdg.clone(),
-            dm.pia0.clone(),
-            dm.pia1.clone(),
+            dm.pia.clone(),
             0x8000,
             None,
         );
@@ -177,15 +176,17 @@ mod embedded {
 
             // Poll Input Devices
             if let Some(event) = ps2_kb.poll() {
+                let mut pia = dm.pia.lock();
                 match event {
-                    InputEvent::Press(k) => dm.pia0.lock().set_key(k, true),
-                    InputEvent::Release(k) => dm.pia0.lock().set_key(k, false),
+                    InputEvent::Press(k) => pia.set_key(k, true),
+                    InputEvent::Release(k) => pia.set_key(k, false),
                 }
             }
             if let Some(event) = usb_kb.poll() {
+                let mut pia = dm.pia.lock();
                 match event {
-                    InputEvent::Press(k) => dm.pia0.lock().set_key(k, true),
-                    InputEvent::Release(k) => dm.pia0.lock().set_key(k, false),
+                    InputEvent::Press(k) => pia.set_key(k, true),
+                    InputEvent::Release(k) => pia.set_key(k, false),
                 }
             }
 

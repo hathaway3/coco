@@ -37,8 +37,7 @@ pub struct Core {
     pub ram_top: u16,               // keep track of where the caller wants ram to end
     pub sam: Arc<Mutex<crate::sam::Sam>>,
     pub _vdg: Arc<Mutex<crate::vdg::Vdg>>,
-    pub pia0: Arc<Mutex<crate::pia::Pia0>>,
-    pub pia1: Arc<Mutex<crate::pia::Pia1>>,
+    pub pia: Arc<Mutex<crate::pia::PiaPair>>,
     pub reg: crate::registers::Set, // the full set of 6809 registers
     pub acia: Option<core::cell::RefCell<crate::acia::Acia>>, // ACIA simulator
     pub reset_vector: Option<u16>,  // overrides the reset vector if set
@@ -78,8 +77,7 @@ impl Core {
         ram: &'static mut [u8],
         sam: Arc<Mutex<sam::Sam>>,
         vdg: Arc<Mutex<vdg::Vdg>>,
-        pia0: Arc<Mutex<pia::Pia0>>,
-        pia1: Arc<Mutex<pia::Pia1>>,
+        pia: Arc<Mutex<pia::PiaPair>>,
         ram_top: u16,
         acia_addr: Option<u16>,
     ) -> Core {
@@ -94,8 +92,7 @@ impl Core {
             ram_top,
             sam,
             _vdg: vdg,
-            pia0,
-            pia1,
+            pia,
             reg: { Default::default() },
             acia: acia_addr.map(|a| core::cell::RefCell::new(acia::Acia::new(a).expect("failed to start ACIA"))),
             reset_vector: None,

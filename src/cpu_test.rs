@@ -9,10 +9,8 @@ fn create_core() -> Core {
     let ram = Box::leak(vec![0u8; 0x10000].into_boxed_slice());
     let sam = Arc::new(Mutex::new(Sam::new()));
     let vdg = Arc::new(Mutex::new(Vdg::with_ram(0)));
-    let pia1 = Arc::new(Mutex::new(Pia1::new()));
-    let pia0 = Arc::new(Mutex::new(Pia0::new(pia1.clone())));
-
-    Core::new(ram, sam, vdg, pia0, pia1, 0xFFFF, None)
+    let pia = Arc::new(Mutex::new(PiaPair::new()));
+    Core::new(ram, sam, vdg, pia, 0xFFFF, None)
 }
 
 #[test]

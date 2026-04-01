@@ -1,4 +1,5 @@
 use super::*;
+use alloc::collections::VecDeque;
 use spin::Mutex;
 
 pub trait Pia {
@@ -6,7 +7,7 @@ pub trait Pia {
     fn write(&mut self, reg_num: usize, data: u8);
 }
 
-/// Implements one "side" of a PIA chip
+/// Implements one "side" of a PIA chip (e.g., MC6821 A or B side)
 #[derive(Debug, Default)]
 struct PiaSide {
     // control register
@@ -96,7 +97,6 @@ impl PiaSide {
         if c2 && !self.c2 && !self.manual_c2_trigger() {
             // set c2 flag; (bit 6)
             self.cr |= 0x40;
-            // remember this transition
         }
         self.c2 = c2;
     }
@@ -105,230 +105,91 @@ impl PiaSide {
     fn consume_interrupt(&mut self) -> bool {
         let mut interrupt = false;
         // if control line 1 transitioned and interrupt from c1 is enabled in cr...
-        if self.c1 && (self.cr & 1 == 1) {
+        if (self.cr & 0x80 == 0x80) && (self.cr & 1 == 1) {
             interrupt = true;
-            self.c1 = false;
+            self.cr &= 0x7f; // reset flag
         }
         // if control line 2 transitioned and interrupt from c2 is enabled in cr...
         // AND control line 2 is configured as an input in cr...
-        if self.c2 && (self.cr & 0x28 == 0x8) {
+        if (self.cr & 0x40 == 0x40) && (self.cr & 0x28 == 0x8) {
             interrupt = true;
-            self.c2 = false;
+            self.cr &= 0xbf; // reset flag
         }
         interrupt
     }
 }
 
-#[derive(Debug)]
-pub struct Pia0 {
+/// Internal chip state for PIA 0 (Keyboard, Joystick)
+#[derive(Debug, Default)]
+struct Chip0 {
     ab: [PiaSide; 2],
     col: [u8; 8],
     joy_x: u8,
     joy_y: u8,
     joy_sw_1: bool,
     joy_sw_2: bool,
-    // Deadlock risk! but Pia0 needs to read Pia1.
-    // In real life, they are wired together.
-    // I'm sure there's a better way to do this
-    // but it will have to wait.
-    pia1: Arc<Mutex<Pia1>>,
 }
-impl Pia for Pia0 {
-    fn read(&mut self, reg_num: usize) -> u8 {
+
+impl Chip0 {
+    fn read(&mut self, reg_num: usize, dac_val: u8) -> u8 {
         let i = reg_num % 4;
         if i == 0 {
             // caller is reading pia0.a data
-            // In order to set bit 7 appropriately we need to
-            // compare the value of the DAC with the selected joystick.
-            // Note: we route the mouse to BOTH joysticks
             let joy_val = match self.ab[0].c2 {
-                // horizontal axis
                 false => self.joy_x,
-                // vertical axis
                 true => self.joy_y,
             };
-            // DAC val is in the top 6 bits of A side data register of pia1
-            // This is the only reason we need a reference to pia1 here.
-            // We must get the latest value and can't use any kind of caching.
-            let dac = {
-                let mut pia1 = self.pia1.lock();
-                pia1.read(0) >> 2
-            };
-            if dac > joy_val {
-                // clear comparitor flag
-                self.ab[0].ir &= 0x7f;
+            if dac_val > joy_val {
+                self.ab[0].ir &= 0x7f; // clear comparator flag
             } else {
-                // set comparitor flag
-                self.ab[0].ir |= 0x80;
+                self.ab[0].ir |= 0x80; // set comparator flag
             }
         }
         self.ab[(i >> 1) & 1].read(reg_num)
     }
+
     fn write(&mut self, reg_num: usize, data: u8) {
         let i = reg_num % 4;
         self.ab[(i >> 1) & 1].write(i, data);
-        match i {
-            // if write is to one of the control registers then check DAC mux bits
-            1 | 3 => self.pia1.lock().set_dac_mux(self.ab[0].c2, self.ab[1].c2),
-            // if write is to the b-side data register, then it's related to keyboard
-            2 => self.strobe_keyboard(),
-            _ => (),
-        }
-    }
-}
-impl Pia0 {
-    #[allow(clippy::new_without_default)]
-    pub fn new(pia1: Arc<Mutex<Pia1>>) -> Self {
-        Pia0 {
-            ab: [PiaSide::default(), PiaSide::default()],
-            col: [0xff; 8],
-            joy_x: 0x1f,
-            joy_y: 0x1f,
-            joy_sw_1: false,
-            joy_sw_2: false,
-            pia1,
-        }
-    }
-    // Helper to map ASCII to CoCo matrix (Row, Col)
-    fn ascii_to_matrix(c: u8) -> Option<(usize, usize)> {
-        match c.to_ascii_uppercase() {
-            b'@' => Some((0, 0)),
-            b'A' => Some((0, 1)),
-            b'B' => Some((0, 2)),
-            b'C' => Some((0, 3)),
-            b'D' => Some((0, 4)),
-            b'E' => Some((0, 5)),
-            b'F' => Some((0, 6)),
-            b'G' => Some((0, 7)),
-            b'H' => Some((1, 0)),
-            b'I' => Some((1, 1)),
-            b'J' => Some((1, 2)),
-            b'K' => Some((1, 3)),
-            b'L' => Some((1, 4)),
-            b'M' => Some((1, 5)),
-            b'N' => Some((1, 6)),
-            b'O' => Some((1, 7)),
-            b'P' => Some((2, 0)),
-            b'Q' => Some((2, 1)),
-            b'R' => Some((2, 2)),
-            b'S' => Some((2, 3)),
-            b'T' => Some((2, 4)),
-            b'U' => Some((2, 5)),
-            b'V' => Some((2, 6)),
-            b'W' => Some((2, 7)),
-            b'X' => Some((3, 0)),
-            b'Y' => Some((3, 1)),
-            b'Z' => Some((3, 2)),
-            b' ' => Some((3, 7)),
-            b'0' => Some((4, 0)),
-            b'1' => Some((4, 1)),
-            b'2' => Some((4, 2)),
-            b'3' => Some((4, 3)),
-            b'4' => Some((4, 4)),
-            b'5' => Some((4, 5)),
-            b'6' => Some((4, 6)),
-            b'7' => Some((4, 7)),
-            b'8' => Some((5, 0)),
-            b'9' => Some((5, 1)),
-            b':' => Some((5, 2)),
-            b';' => Some((5, 3)),
-            b',' => Some((5, 4)),
-            b'-' => Some((5, 5)),
-            b'.' => Some((5, 6)),
-            b'/' => Some((5, 7)),
-            b'\r' | b'\n' => Some((6, 0)), // Enter
-            0x08 => Some((3, 5)),          // Backspace -> Left Arrow as Backspace behavior
-            _ => None,
-        }
-    }
-
-    pub fn set_key(&mut self, key: u8, pressed: bool) {
-        if let Some((row, col)) = Self::ascii_to_matrix(key) {
-            if pressed {
-                self.col[col] |= 1 << row;
-            } else {
-                self.col[col] &= !(1 << row);
-            }
+        if i == 2 {
             self.strobe_keyboard();
         }
     }
-    pub fn strobe_keyboard(&mut self) {
-        // strobe the keyboard based on side B output
+
+    fn strobe_keyboard(&mut self) {
         let mut com = 0u8;
-        // use read_output because data direction settings matter here
         let mut cols = !self.ab[1].read_output();
         if cols != 0 {
-            // info!("strobing with {cols:08b}");
             for i in 0..8 {
                 if cols & 1 == 1 {
-                    // strobing column i
                     com |= self.col[i];
                 }
                 cols >>= 1;
             }
         }
-        // handle joystick switches -- both joysticks mapped to the mouse
         if self.joy_sw_1 {
-            // only provide joystick switch if caller didn't strobe associated col(s)
-            com |= 0x3 & !cols
+            com |= 0x3 & !cols;
         }
         if self.joy_sw_2 {
-            // only provide joystick switch if caller didn't strobe associated col(s)
-            com |= 0xc & !cols
+            com |= 0xc & !cols;
         }
-        // store the result of strobing in the side A input register
         self.ab[0].ir = !com;
     }
-    // fires the hsync hw interrupt into pia0 and then checks to see if an IRQ should result
-    pub fn hsync_irq(&mut self) -> bool {
-        self.ab[0].set_c1(true);
-        self.ab[0].consume_interrupt()
-    }
-    // fires the vsync hw interrupt into pia0 and then checks to see if an IRQ should result
-    pub fn vsync_irq(&mut self) -> bool {
-        self.ab[1].set_c1(true);
-        self.ab[1].consume_interrupt()
-    }
 }
+
+/// Internal chip state for PIA 1 (Video Mode, Sound, Cartridge)
 #[derive(Debug)]
-pub struct Pia1 {
+struct Chip1 {
     ab: [PiaSide; 2],
     sound_enabled: bool,
     dac_sel_a: bool,
     dac_sel_b: bool,
     last_bit_sound: bool,
 }
-impl Pia for Pia1 {
-    fn read(&mut self, reg_num: usize) -> u8 {
-        self.ab[(reg_num >> 1) & 1].read(reg_num)
-    }
-    fn write(&mut self, reg_num: usize, data: u8) {
-        let i = reg_num % 4;
-        self.ab[(i >> 1) & 1].write(reg_num, data);
 
-        // handle pia1-specific functionality
-        match i {
-            0 if self.sound_enabled && !self.dac_sel_a && !self.dac_sel_b => {
-                // this is a write to the DAC and sound is enabled so send the data to the audio device
-                // convert 6-bit amplitude into f32 value between -1.0 and +1.0
-                let _fdata = ((self.ab[0].read_output() >> 2) as f32 - 31.0) / 32.0;
-            }
-            2 => {
-                // check for single-bit sound in pia1-b data register
-                let bit = self.ab[1].read_output() & 2 == 2;
-                if bit != self.last_bit_sound {
-                    let _fdata = if bit { 0.5 } else { -0.5 };
-                }
-                self.last_bit_sound = bit;
-            }
-            3 => self.sound_enabled = data & 8 == 8,
-            _ => (),
-        }
-    }
-}
-impl Pia1 {
-    pub fn new() -> Self {
-        Pia1 {
+impl Default for Chip1 {
+    fn default() -> Self {
+        Self {
             ab: [PiaSide::default(), PiaSide::default()],
             sound_enabled: false,
             dac_sel_a: false,
@@ -336,18 +197,129 @@ impl Pia1 {
             last_bit_sound: false,
         }
     }
-    /// Returns the following bits as a byte: 0, 0, 0, G/!A, GM2, GM1, GM0, CSS
-    pub fn get_vdg_bits(&self) -> u8 {
-        (self.ab[1].read_data() >> 3) & 0x1f
+}
+
+/// Unified PIA implementation for the CoCo
+#[derive(Debug, Default)]
+pub struct PiaPair {
+    chip0: Chip0,
+    chip1: Chip1,
+    audio_buffer: VecDeque<f32>,
+}
+
+impl PiaPair {
+    pub fn new() -> Self {
+        Self {
+            chip0: Chip0::default(),
+            chip1: Chip1::default(),
+            audio_buffer: VecDeque::with_capacity(1024),
+        }
     }
-    /// Lets PIA1 know that a cartridge was inserted.
-    /// Returns true if FIRQ is signalled
+
+    pub fn read(&mut self, addr: u16) -> u8 {
+        match addr {
+            0xff00..=0xff1f => {
+                let dac_val = self.chip1.ab[0].read_output() >> 2;
+                self.chip0.read((addr - 0xff00) as usize, dac_val)
+            }
+            0xff20..=0xff3f => self.chip1.ab[((addr - 0xff20) >> 1) as usize & 1].read((addr - 0xff20) as usize),
+            _ => 0,
+        }
+    }
+
+    pub fn write(&mut self, addr: u16, data: u8) {
+        match addr {
+            0xff00..=0xff1f => {
+                let i = (addr - 0xff00) as usize % 4;
+                self.chip0.write(i, data);
+                if i == 1 || i == 3 {
+                    self.chip1.dac_sel_a = self.chip0.ab[0].c2;
+                    self.chip1.dac_sel_b = self.chip0.ab[1].c2;
+                }
+            }
+            0xff20..=0xff3f => {
+                let i = (addr - 0xff20) as usize % 4;
+                self.chip1.ab[(i >> 1) & 1].write(i, data);
+
+                match i {
+                    0 if self.chip1.sound_enabled && !self.chip1.dac_sel_a && !self.chip1.dac_sel_b => {
+                        let fdata = ((self.chip1.ab[0].read_output() >> 2) as f32 - 31.0) / 32.0;
+                        self.push_audio_sample(fdata);
+                    }
+                    2 => {
+                        let bit = self.chip1.ab[1].read_output() & 2 == 2;
+                        if bit != self.chip1.last_bit_sound {
+                            let fdata = if bit { 0.5 } else { -0.5 };
+                            self.push_audio_sample(fdata);
+                        }
+                        self.chip1.last_bit_sound = bit;
+                    }
+                    3 => self.chip1.sound_enabled = data & 8 == 8,
+                    _ => (),
+                }
+            }
+            _ => (),
+        }
+    }
+
+    fn push_audio_sample(&mut self, sample: f32) {
+        if self.audio_buffer.len() < 1024 {
+            self.audio_buffer.push_back(sample);
+        }
+    }
+
+    /// Retrieve and clear collected audio samples
+    pub fn get_audio_samples(&mut self) -> Vec<f32> {
+        self.audio_buffer.drain(..).collect()
+    }
+
+    // --- External Hardware Signals ---
+
+    pub fn set_key(&mut self, key: u8, pressed: bool) {
+        if let Some((row, col)) = self.ascii_to_matrix(key) {
+            if pressed {
+                self.chip0.col[col] |= 1 << row;
+            } else {
+                self.chip0.col[col] &= !(1 << row);
+            }
+            self.chip0.strobe_keyboard();
+        }
+    }
+
+    pub fn hsync_irq(&mut self) -> bool {
+        self.chip0.ab[0].set_c1(true);
+        self.chip0.ab[0].consume_interrupt()
+    }
+
+    pub fn vsync_irq(&mut self) -> bool {
+        self.chip0.ab[1].set_c1(true);
+        self.chip0.ab[1].consume_interrupt()
+    }
+
     pub fn cart_firq(&mut self) -> bool {
-        self.ab[1].set_c1(true);
-        self.ab[1].consume_interrupt()
+        self.chip1.ab[1].set_c1(true);
+        self.chip1.ab[1].consume_interrupt()
     }
-    pub fn set_dac_mux(&mut self, a: bool, b: bool) {
-        self.dac_sel_a = a;
-        self.dac_sel_b = b;
+
+    pub fn get_vdg_bits(&self) -> u8 {
+        (self.chip1.ab[1].read_data() >> 3) & 0x1f
+    }
+
+    fn ascii_to_matrix(&self, c: u8) -> Option<(usize, usize)> {
+        match c.to_ascii_uppercase() {
+            b'@' => Some((0, 0)), b'A' => Some((0, 1)), b'B' => Some((0, 2)), b'C' => Some((0, 3)),
+            b'D' => Some((0, 4)), b'E' => Some((0, 5)), b'F' => Some((0, 6)), b'G' => Some((0, 7)),
+            b'H' => Some((1, 0)), b'I' => Some((1, 1)), b'J' => Some((1, 2)), b'K' => Some((1, 3)),
+            b'L' => Some((1, 4)), b'M' => Some((1, 5)), b'N' => Some((1, 6)), b'O' => Some((1, 7)),
+            b'P' => Some((2, 0)), b'Q' => Some((2, 1)), b'R' => Some((2, 2)), b'S' => Some((2, 3)),
+            b'T' => Some((2, 4)), b'U' => Some((2, 5)), b'V' => Some((2, 6)), b'W' => Some((2, 7)),
+            b'X' => Some((3, 0)), b'Y' => Some((3, 1)), b'Z' => Some((3, 2)), b' ' => Some((3, 7)),
+            b'0' => Some((4, 0)), b'1' => Some((4, 1)), b'2' => Some((4, 2)), b'3' => Some((4, 3)),
+            b'4' => Some((4, 4)), b'5' => Some((4, 5)), b'6' => Some((4, 6)), b'7' => Some((4, 7)),
+            b'8' => Some((5, 0)), b'9' => Some((5, 1)), b':' => Some((5, 2)), b';' => Some((5, 3)),
+            b',' => Some((5, 4)), b'-' => Some((5, 5)), b'.' => Some((5, 6)), b'/' => Some((5, 7)),
+            b'\r' | b'\n' => Some((6, 0)), 0x08 => Some((3, 5)),
+            _ => None,
+        }
     }
 }

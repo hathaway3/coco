@@ -37,15 +37,10 @@ impl Core {
                 // just complete the read from memory
                 self.raw_ram[addr as usize]
             }
-            0xff00..=0xff1f => {
-                // pia0
-                let mut pia = self.pia0.lock();
-                pia.read((addr - 0xff00) as usize)
-            }
-            0xff20..=0xff3f => {
-                // pia1
-                let mut pia = self.pia1.lock();
-                pia.read((addr - 0xff20) as usize)
+            0xff00..=0xff3f => {
+                // pia pair
+                let mut pia = self.pia.lock();
+                pia.read(addr)
             }
             0xffc0..=0xffdf => {
                 // sam (write-only)
@@ -138,15 +133,10 @@ impl Core {
                 // the address is within the address space of RAM
                 self.raw_ram[addr as usize] = data;
             }
-            0xff00..=0xff1f => {
-                // pia0
-                let mut pia = self.pia0.lock();
-                pia.write((addr - 0xff00) as usize, data);
-            }
-            0xff20..=0xff3f => {
-                // pia1
-                let mut pia = self.pia1.lock();
-                pia.write((addr - 0xff20) as usize, data);
+            0xff00..=0xff3f => {
+                // pia pair
+                let mut pia = self.pia.lock();
+                pia.write(addr, data);
             }
             0xffc0..=0xffdf => {
                 // sam

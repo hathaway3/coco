@@ -1,4 +1,3 @@
-use crate::pia::{Pia0, Pia1};
 use crate::sam::Sam;
 use spin::Mutex;
 use alloc::sync::Arc;
@@ -13,8 +12,7 @@ pub struct DeviceManager {
     pub ram: &'static mut [u8],
     pub sam: Arc<Mutex<Sam>>,
     pub vdg: Arc<Mutex<Vdg>>,
-    pub pia0: Arc<Mutex<Pia0>>,
-    pub pia1: Arc<Mutex<Pia1>>,
+    pub pia: Arc<Mutex<crate::pia::PiaPair>>,
 }
 
 impl Default for DeviceManager {
@@ -30,25 +28,21 @@ impl DeviceManager {
 
     pub fn with_ram(ram: &'static mut [u8], vram_offset: usize) -> Self {
         let vdg = Arc::new(Mutex::new(Vdg::with_ram(vram_offset)));
-        let pia1 = Arc::new(Mutex::new(Pia1::new()));
+        let pia = Arc::new(Mutex::new(crate::pia::PiaPair::new()));
         DeviceManager {
             display: unsafe { &mut *(&raw mut DISPLAY_BUFFER) },
             ram,
             sam: Arc::new(Mutex::new(Sam::new())),
             vdg,
-            pia0: Arc::new(Mutex::new(Pia0::new(pia1.clone()))),
-            pia1,
+            pia,
         }
     }
 
     pub fn get_vdg(&self) -> Arc<Mutex<Vdg>> {
         self.vdg.clone()
     }
-    pub fn get_pia0(&self) -> Arc<Mutex<Pia0>> {
-        self.pia0.clone()
-    }
-    pub fn get_pia1(&self) -> Arc<Mutex<Pia1>> {
-        self.pia1.clone()
+    pub fn get_pia(&self) -> Arc<Mutex<crate::pia::PiaPair>> {
+        self.pia.clone()
     }
     pub fn get_ram(&self) -> &'static mut [u8] {
         unsafe { &mut *(&raw mut RAM_DISK) }
@@ -61,19 +55,14 @@ impl DeviceManager {
     }
 
     pub fn update(&mut self) {
-        {
-            // pia0 handles keyboard input
-            let mut _pia0 = self.pia0.lock();
-            // pia0.update(&self.window);
-        }
         let mode;
         let css;
         let vram_offset;
         {
-            // use SAM and PIA1 to determine current VDG mode
+            // use SAM and PIA pair to determine current VDG mode
+            let mut pia = self.pia.lock();
             let sam = self.sam.lock();
-            let pia1 = self.pia1.lock();
-            let pia_bits = pia1.get_vdg_bits();
+            let pia_bits = pia.get_vdg_bits();
             mode = VdgMode::try_from_pia_and_sam(pia_bits, sam.get_vdg_bits());
             css = pia_bits & 1 == 1;
             // get the starting address of VRAM from the SAM

@@ -41,7 +41,7 @@ pub use crate::acia::Acia;
 pub use crate::cpu::Core;
 pub use crate::devmgr::DeviceManager;
 pub use crate::error::{Error, ErrorKind};
-pub use crate::pia::{Pia, Pia0, Pia1};
+pub use crate::pia::{Pia, PiaPair};
 pub use crate::program::*;
 pub use crate::sam::Sam;
 pub use crate::vdg::{Color, Vdg, VdgMode};
