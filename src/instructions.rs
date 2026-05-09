@@ -9,9 +9,12 @@ use memory::AccessType;
 use core::fmt::{self, Debug};
 use spin::Once;
 
-pub static mut FLAVOR_TABLE: [Option<Flavor>; 768] = [None; 768];
-pub static mut DESC_BY_NAME: Option<BTreeMap<&'static str, &'static Descriptor>> = None;
-static INIT: Once = Once::new();
+pub struct InitData {
+    pub flavor_table: [Option<Flavor>; 768],
+    pub desc_by_name: BTreeMap<&'static str, &'static Descriptor>,
+}
+pub static INIT_DATA: Once<InitData> = Once::new();
+
 fn ft_index(op_code: u16) -> Option<usize> {
     match op_code & 0xff00 {
         0 => Some(op_code as usize),
@@ -21,32 +24,27 @@ fn ft_index(op_code: u16) -> Option<usize> {
     }
 }
 pub fn opcode_to_flavor(op: u16) -> Option<&'static Flavor> {
-    // SAFETY: FLAVOR_TABLE is a static mut that is initialized once by init()
-    unsafe { instructions::FLAVOR_TABLE[ft_index(op)?].as_ref() }
+    INIT_DATA.get()?.flavor_table[ft_index(op)?].as_ref()
 }
 pub fn name_to_descriptor(name: &str) -> Option<&'static Descriptor> {
-    // SAFETY: DESC_BY_NAME is a static mut that is initialized once by init()
-    unsafe { DESC_BY_NAME.as_ref()?.get(name).copied() }
+    INIT_DATA.get()?.desc_by_name.get(name).copied()
 }
 /// Initialize static lookup tables.
 pub fn init() {
-    INIT.call_once(|| {
-        let mut dbn = BTreeMap::new();
+    INIT_DATA.call_once(|| {
+        let mut flavor_table = [None; 768];
+        let mut desc_by_name = BTreeMap::new();
         for desc in DESCRIPTORS {
-            dbn.insert(desc.name, desc);
+            desc_by_name.insert(desc.name, desc);
             for detail in desc.md {
-                // SAFETY: FLAVOR_TABLE is a static mut that is initialized once by init()
-                unsafe {
-                    FLAVOR_TABLE[ft_index(detail.op).unwrap()] = Some(Flavor {
-                        desc,
-                        mode: instructions::AddressingMode::from(detail.am),
-                        detail,
-                    })
-                }
+                flavor_table[ft_index(detail.op).unwrap()] = Some(Flavor {
+                    desc,
+                    mode: instructions::AddressingMode::from(detail.am),
+                    detail,
+                });
             }
         }
-        // SAFETY: DESC_BY_NAME is a static mut that is initialized once by init()
-        unsafe { DESC_BY_NAME = Some(dbn) }
+        InitData { flavor_table, desc_by_name }
     });
 }
 
@@ -232,7 +230,7 @@ pub mod PPPostByte {
                 if count > 1 {
                     out.push(',');
                 }
-                if using_user_stack && bit == SU {
+                if using_user_stack && bit == 6 {
                     out.push('S');
                 } else {
                     out.push_str(_STR[bit as usize]);

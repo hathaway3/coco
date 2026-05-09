@@ -157,16 +157,16 @@ impl CCBits {
     }
     // note: DEC does not affect the carry flag
     pub fn dec_u8(&mut self, val: u8) -> u8 {
-        let (result, v) = val.overflowing_sub(1);
-        self.set(CCBit::V, v);
+        let result = val.wrapping_sub(1);
+        self.set(CCBit::V, val == 0x80);
         self.set(CCBit::Z, result == 0);
         self.set(CCBit::N, result & 0x80 != 0);
         result
     }
     // note INC does not affect the carry flag
     pub fn inc_u8(&mut self, val: u8) -> u8 {
-        let (result, v) = val.overflowing_add(1);
-        self.set(CCBit::V, v);
+        let result = val.wrapping_add(1);
+        self.set(CCBit::V, val == 0x7F);
         self.set(CCBit::Z, result == 0);
         self.set(CCBit::N, result & 0x80 != 0);
         result

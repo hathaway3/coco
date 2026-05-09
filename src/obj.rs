@@ -196,11 +196,10 @@ impl Instruction {
                     "B" => 0b10000101,
                     "D" => 0b10001011,
                     _ => {
-                        return Err(syntax_err!(format!(
+                        return Err(syntax_err!(
                             "register \"{}\" invalid as offset",
                             regs[0]
-                        )
-                        .as_str()));
+                        ));
                     }
                 };
                 self._add_index_register_to_postbyte(&mut post_byte, regs[1].as_str())?;
@@ -309,9 +308,7 @@ impl Instruction {
             "S" => 0b01100000,
             "PC" | "PCR" => 0b00001100,
             _ => {
-                return Err(syntax_err!(
-                    format!("invalid index register \"{}\"", reg).as_str()
-                ));
+                return Err(syntax_err!("invalid index register \"{}\"", reg));
             }
         };
         Ok(())

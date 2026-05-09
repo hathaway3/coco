@@ -290,7 +290,7 @@ impl Core {
         &self,
         pc: u16,
         rhs: u16,
-        _inst: &instructions::Instance,
+        inst: &instructions::Instance,
     ) -> Result<u16, Error> {
         // avoiding ok_or and ok_or_else to increase performance
         // ok_or would invoke the runtime_err! macro every time (regardless of result)

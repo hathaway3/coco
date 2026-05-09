@@ -51,7 +51,7 @@ impl Core {
                 self.raw_ram[(addr - 0x4000) as usize]
             }
             _ => {
-                warn!("Read at unimplemented addres {:04x}", addr);
+                warn!("Read at unimplemented address {:04x}", addr);
                 0
             }
         };
@@ -86,7 +86,7 @@ impl Core {
     ) -> Result<u16, Error> {
         let mut b: [u8; 2] = [0, 0];
         self._read_u8(atype, addr, Some(&mut b[0]))?;
-        self._read_u8(atype, addr + 1, Some(&mut b[1]))?;
+        self._read_u8(atype, addr.wrapping_add(1), Some(&mut b[1]))?;
         let word = (b[0] as u16) << 8 | (b[1] as u16);
         if let Some(data) = data {
             *data = word;
@@ -162,6 +162,6 @@ impl Core {
             self._write_u8(atype, addr, msb)?;
             offset += 1;
         }
-        self._write_u8(atype, addr + offset, data.lsb())
+        self._write_u8(atype, addr.wrapping_add(offset), data.lsb())
     }
 }

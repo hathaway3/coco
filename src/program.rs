@@ -258,11 +258,10 @@ impl ProgramLabels {
             label.node = Some(node);
             Ok(())
         } else {
-            Err(syntax_err!(format!(
+            Err(syntax_err!(
                 "Cannot set node for undefined label \"{}\"",
                 name
-            )
-            .as_str()))
+            ))
         }
     }
     pub fn eval_all_nodes(&mut self) -> Result<usize, Error> {
@@ -334,11 +333,10 @@ impl ProgramSegments {
         if self.map.insert(addr, ProgramSegment {}).is_some() && addr != 0u16 {
             // we allow duplicate segments at address 0 (because of our default segment there)
             // but flag other duplicates as errors
-            return Err(syntax_err!(format!(
+            return Err(syntax_err!(
                 "duplicate segment at address {:04x}",
                 addr
-            )
-            .as_str()));
+            ));
         }
         Ok(())
     }

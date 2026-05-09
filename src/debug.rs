@@ -528,12 +528,12 @@ impl Core {
                     row = count;
                     break;
                 }
-                let _b = self
+                let b = self
                     ._read_u8(memory::AccessType::System, index, None)
                     .unwrap();
                 if col < COLS_PER_ROW {
                     if i < count {
-                        print!(" {:02X}", _b);
+                        print!(" {:02X}", b);
                     } else {
                         print!("   ");
                     }

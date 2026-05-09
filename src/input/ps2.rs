@@ -147,11 +147,15 @@ impl<P: PIOExt, SM: StateMachineIndex> InputDevice for Ps2Keyboard<P, SM> {
 
             if start == 0 && stop == 1 {
                 // Valid frame candidate
-                // Extract Data: bits 1..9
                 let data = ((self.shift_reg >> 1) & 0xFF) as u8;
 
-                // Parity check? (bit 9). Odd parity.
-                // For simplicity, skip parity check or add TODO.
+                // Parity check (bit 9). Odd parity.
+                let parity_bit = (self.shift_reg >> 9) & 1;
+                if (data.count_ones() + parity_bit as u32) % 2 == 0 {
+                    // Parity error, discard frame
+                    self.shift_reg = 0xFFFF;
+                    continue;
+                }
 
                 // Clear register to avoid re-detecting
                 self.shift_reg = 0xFFFF; // Fill with 1s so Start(0) is lost?

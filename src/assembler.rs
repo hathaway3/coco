@@ -138,8 +138,8 @@ impl Assembler {
                     // make sure the name hasn't already been used
                     if macros.contains_key(&name) {
                         return Err(syntax_err_line!(
-                            format!("duplicate definition of macro \"{}\"", &name),
-                            src_line_num
+                            src_line_num,
+                            "duplicate definition of macro \"{}\"", &name
                         ));
                     }
                     // create a new Macro object and hold it in the mo Option
@@ -178,7 +178,7 @@ impl Assembler {
             if let Some(mut m) = mo {
                 // we're in a macro definition; add this line to the macro
                 m.add_line(&line)
-                    .map_err(|e| line_err!(prog_lines.len(), e.kind, e.msg))?;
+                    .map_err(|e| line_err!(prog_lines.len(), e.kind, "{}", e.msg))?;
                 // also add this line as a comment in the program
                 add_line(
                     &mut prog_lines,
@@ -264,10 +264,10 @@ impl Assembler {
         // we've read through all the supplied source lines
         if let Some(_m) = mo {
             // a macro definition was begun but never ended
-            return Err(syntax_err!(format!(
+            return Err(syntax_err!(
                 "no end found for macro \"{}\"",
                 _m.name
-            )));
+            ));
         }
         Ok(Program::new(prog_lines))
     }
@@ -398,7 +398,7 @@ impl Assembler {
             Ok(())
         };
         for line in program.lines.iter_mut() {
-            pre_build_one_line(line).map_err(|e| line_err!(line.src_line_num, e.kind, e.msg))?;
+            pre_build_one_line(line).map_err(|e| line_err!(line.src_line_num, e.kind, "{}", e.msg))?;
         }
         Ok(())
     }
@@ -418,7 +418,7 @@ impl Assembler {
                 // try to build the object
                 let res = op.build(expected_addr, &program.labels, program.dp_dirty);
                 if let Err(e) = res {
-                    return Err(line_err!(line.src_line_num, e.kind, e.msg.as_str()));
+                    return Err(line_err!(line.src_line_num, e.kind, "{}", e.msg));
                 }
                 let bob = res.unwrap();
                 // set our next program address based on the binary object we just built
@@ -460,7 +460,7 @@ impl Assembler {
         };
         for line in program.lines.iter_mut() {
             if let Err(e) = build_one_line(line) {
-                return Err(line_err!(line.src_line_num, e.kind, e.msg));
+                return Err(line_err!(line.src_line_num, e.kind, "{}", e.msg));
             }
         }
         changes += program.labels.eval_all_nodes()?;
@@ -497,7 +497,7 @@ impl Assembler {
         // it's not a directive; see if it's an instruction
         // using ok_or_else to avoid executing the format! every time this next line is executed.
         let desc = instructions::name_to_descriptor(line.get_operation()).ok_or_else(|| {
-            syntax_err!(format!("Invalid operation: \"{}\"", line.get_operation()))
+            syntax_err!("Invalid operation: \"{}\"", line.get_operation())
         })?;
         let od = if line.operand.is_none() || desc.is_inherent() {
             // the instruction uses only inherent addressing or there is no operand

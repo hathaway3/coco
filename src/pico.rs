@@ -68,7 +68,7 @@ mod embedded {
             &mut pac.RESETS,
             &mut watchdog,
             timing.bit_clk / HSTX_MULTIPLE,
-            2 / HSTX_MULTIPLE,
+            2_u32.div_ceil(HSTX_MULTIPLE),
         );
 
         let sio = hal::Sio::new(pac.SIO);
@@ -149,7 +149,7 @@ mod embedded {
         // --- Emulator Core Initialization ---
         let mut dm = DeviceManager::new();
         let mut core = Core::new(
-            unsafe { &mut *(&raw mut RAM_DISK) },
+            unsafe { &mut *coco::RAM_DISK.as_mut_ptr() },
             dm.sam.clone(),
             dm.vdg.clone(),
             dm.pia.clone(),

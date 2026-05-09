@@ -425,10 +425,10 @@ impl Parser {
         }
         if token_iter.peek().is_some() {
             // we successfully parsed the operand but found another token
-            return Err(syntax_err!(format!(
+            return Err(syntax_err!(
                 "unexpected token \"{}\"",
                 token_iter.peek().unwrap().raw
-            )));
+            ));
         }
         Ok(od)
     }

@@ -29,44 +29,44 @@ macro_rules! acia_dbg {
 }
 
 macro_rules! line_err {
-    ($line:expr, $kind:expr, $msg:expr $(,)?) => {
-        Error::new($kind, None, "")
+    ($line:expr, $kind:expr, $($arg:tt)*) => {
+        crate::error::Error::new($kind, None, &alloc::format!($($arg)*))
     };
 }
 
 macro_rules! general_err {
-    ($($msg:expr),* $(,)?) => {
-        Error::new($crate::ErrorKind::General, None, "")
+    ($($arg:tt)*) => {
+        crate::error::Error::new($crate::error::ErrorKind::General, None, &alloc::format!($($arg)*))
     };
 }
 
 macro_rules! syntax_err {
-    ($msg:expr $(,)?) => {
-        Error::new($crate::ErrorKind::Syntax, None, "")
+    ($($arg:tt)*) => {
+        crate::error::Error::new($crate::error::ErrorKind::Syntax, None, &alloc::format!($($arg)*))
     };
 }
 
 macro_rules! syntax_err_line {
-    ($line:expr, $msg:expr $(,)?) => {
-        Error::new($crate::ErrorKind::Syntax, None, "")
+    ($line:expr, $($arg:tt)*) => {
+        crate::error::Error::new($crate::error::ErrorKind::Syntax, None, &alloc::format!($($arg)*))
     };
 }
 
 macro_rules! syntax_err_ctx {
-    ($ctx:expr,$msg:expr $(,)?) => {
-        Error::new($crate::ErrorKind::Syntax, $ctx, "")
+    ($ctx:expr, $($arg:tt)*) => {
+        crate::error::Error::new($crate::error::ErrorKind::Syntax, $ctx, &alloc::format!($($arg)*))
     };
 }
 
 macro_rules! instruction_invalid {
-    ($ctx:expr, $($msg:expr),* $(,)?) => {
-        Error::new($crate::ErrorKind::Runtime, $ctx, "")
+    ($ctx:expr, $($arg:tt)*) => {
+        crate::error::Error::new($crate::error::ErrorKind::Runtime, $ctx, &alloc::format!($($arg)*))
     };
 }
 
 macro_rules! runtime_err {
-    ($ctx:expr, $($msg:expr),* $(,)?) => {
-        Error::new($crate::ErrorKind::Runtime, $ctx, "")
+    ($ctx:expr, $($arg:tt)*) => {
+        crate::error::Error::new($crate::error::ErrorKind::Runtime, $ctx, &alloc::format!($($arg)*))
     };
 }
 

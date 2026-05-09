@@ -258,6 +258,15 @@ impl Core {
     #[allow(unused)]
     #[cfg(not(target_os = "none"))]
     pub fn check_criteria(&self, criteria: &Vec<TestCriterion>) -> Result<(), Error> {
+        for criterion in criteria {
+            if !criterion.eval(self) {
+                return Err(crate::error::Error::new(
+                    crate::error::ErrorKind::Test,
+                    Some(self.reg),
+                    "Test criterion failed",
+                ));
+            }
+        }
         Ok(())
     }
 }

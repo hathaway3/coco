@@ -9,7 +9,6 @@ use crate::{RAM_DISK, DISPLAY_BUFFER};
 // called on the main thread.
 pub struct DeviceManager {
     pub display: &'static mut [u16],
-    pub ram: &'static mut [u8],
     pub sam: Arc<Mutex<Sam>>,
     pub vdg: Arc<Mutex<Vdg>>,
     pub pia: Arc<Mutex<crate::pia::PiaPair>>,
@@ -17,7 +16,7 @@ pub struct DeviceManager {
 
 impl Default for DeviceManager {
     fn default() -> Self {
-        Self::with_ram(unsafe { &mut *(&raw mut RAM_DISK) }, 0)
+        Self::with_vram_offset(0)
     }
 }
 
@@ -26,12 +25,11 @@ impl DeviceManager {
         Self::default()
     }
 
-    pub fn with_ram(ram: &'static mut [u8], vram_offset: usize) -> Self {
-        let vdg = Arc::new(Mutex::new(Vdg::with_ram(vram_offset)));
+    pub fn with_vram_offset(vram_offset: usize) -> Self {
+        let vdg = Arc::new(Mutex::new(Vdg::with_vram_offset(vram_offset)));
         let pia = Arc::new(Mutex::new(crate::pia::PiaPair::new()));
         DeviceManager {
             display: unsafe { &mut *(&raw mut DISPLAY_BUFFER) },
-            ram,
             sam: Arc::new(Mutex::new(Sam::new())),
             vdg,
             pia,
@@ -43,9 +41,6 @@ impl DeviceManager {
     }
     pub fn get_pia(&self) -> Arc<Mutex<crate::pia::PiaPair>> {
         self.pia.clone()
-    }
-    pub fn get_ram(&self) -> &'static mut [u8] {
-        unsafe { &mut *(&raw mut RAM_DISK) }
     }
     pub fn get_sam(&self) -> Arc<Mutex<Sam>> {
         self.sam.clone()

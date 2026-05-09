@@ -67,6 +67,12 @@ pub(crate) use u8oru16::u8u16;
 // Static buffers for embedded deployment
 pub const SCREEN_DIM_X: usize = 256;
 pub const SCREEN_DIM_Y: usize = 192;
-pub static mut RAM_DISK: [u8; 0x10000] = [0u8; 0x10000];
+pub struct RamDiskWrapper(core::cell::UnsafeCell<[u8; 0x10000]>);
+unsafe impl Sync for RamDiskWrapper {}
+impl RamDiskWrapper {
+    pub const fn new() -> Self { Self(core::cell::UnsafeCell::new([0u8; 0x10000])) }
+    pub fn as_mut_ptr(&self) -> *mut [u8; 0x10000] { self.0.get() }
+}
+pub static RAM_DISK: RamDiskWrapper = RamDiskWrapper::new();
 pub static mut DISPLAY_BUFFER: [u16; SCREEN_DIM_X * SCREEN_DIM_Y] =
     [0x0000; SCREEN_DIM_X * SCREEN_DIM_Y];

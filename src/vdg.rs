@@ -220,12 +220,14 @@ pub struct Vdg {
     vram_offset: usize,
     ascii: bool,
 }
+// SAFETY: Vdg reads from the global RAM_DISK on core 1 while Core runs on core 0.
+// This is acceptable in this specific emulator architecture, but we use a Sync wrapper.
 unsafe impl Send for Vdg {}
 
 use crate::RAM_DISK;
 
 impl Vdg {
-    pub fn with_ram(vram_offset: usize) -> Self {
+    pub fn with_vram_offset(vram_offset: usize) -> Self {
         Vdg {
             mode: VdgMode::SG4,
             dirty: true,
@@ -246,12 +248,11 @@ impl Vdg {
         self.ascii = ascii;
     }
     pub fn set_vram_offset(&mut self, vram_offset: usize) {
-        if (vram_offset + VRAM_SIZE) > unsafe { RAM_DISK.len() } {
+        let ram_len = 0x10000;
+        if (vram_offset + VRAM_SIZE) > ram_len {
             panic!(
-                "invalid vram_offset {:x} (ram.len={:x}, VRAM_SIZE={:x}",
-                vram_offset,
-                unsafe { RAM_DISK.len() },
-                VRAM_SIZE
+                "VDG vram_offset ({}) + VRAM_SIZE ({}) exceeds RAM size ({})",
+                vram_offset, VRAM_SIZE, ram_len
             )
         }
         if vram_offset != self.vram_offset {
@@ -276,13 +277,16 @@ impl Vdg {
     // Renders the contents of VRAM to the provided buffer where each pixel is defined by a u16 formatted as RGB565
     // Returns true if any changes were made to the buffer.
     pub fn render(&mut self, display: &mut [u16], css: bool) -> bool {
+        assert!(display.len() >= SCREEN_DIM_X * SCREEN_DIM_Y, "VDG render display buffer too small");
         if !self.dirty && !ALWAYS_RENDER {
             return false;
         }
         self.dirty = false;
+        // TODO SAM V1/V2
+        let ram_ptr = RAM_DISK.as_mut_ptr();
         match self.mode {
             SG4 => {
-                if unsafe { crate::RAM_DISK[SCREEN_DIM_X / 8 + self.vram_offset] != 0 } {
+                if unsafe { (*ram_ptr)[SCREEN_DIM_X / 8 + self.vram_offset] != 0 } {
                     // if the next byte in RAM is not 0 then assume it's ascii
                     self.ascii = true;
                 }
@@ -292,7 +296,7 @@ impl Vdg {
                     self.draw_sg4_block(
                         display,
                         index,
-                        unsafe { crate::RAM_DISK[i + self.vram_offset] },
+                        unsafe { (*ram_ptr)[i + self.vram_offset] },
                         css,
                     );
                 }
@@ -304,7 +308,7 @@ impl Vdg {
                     self.draw_sg_block(
                         display,
                         index,
-                        unsafe { RAM_DISK[i + self.vram_offset] },
+                        unsafe { (*ram_ptr)[i + self.vram_offset] },
                         css,
                     );
                 }
@@ -316,6 +320,7 @@ impl Vdg {
         true
     }
     fn render_graphics(&self, display: &mut [u16], css: bool) {
+        let ram_ptr = RAM_DISK.as_mut_ptr();
         let md = self.mode.get_details();
         let cells_per_src_byte = 8 / md.color_bits;
         let cells_per_row = SCREEN_DIM_X / md.cell_x;
@@ -328,7 +333,7 @@ impl Vdg {
                 // repeat for each row in each cell
                 for src_col in 0..src_bytes_per_row {
                     let src_index = self.vram_offset + src_col + src_row * src_bytes_per_row;
-                    let mut src_data = unsafe { RAM_DISK[src_index] } as u16;
+                    let mut src_data = unsafe { (*ram_ptr)[src_index] } as u16;
                     for _ in 0..cells_per_src_byte {
                         let color = match md.color_bits {
                             1 => {
@@ -356,6 +361,7 @@ impl Vdg {
         }
     }
     fn render_sg_extended(&self, display: &mut [u16]) {
+        let ram_ptr = RAM_DISK.as_mut_ptr();
         let md = self.mode.get_details();
         assert!(md.cell_x == 4 && md.cell_y < 12);
         let mut fg_color;
@@ -372,7 +378,7 @@ impl Vdg {
                         + block_col
                         + (block_row * cell_rows + cell_row) * BLOCK_COLS;
                     // get the data defining this cell row
-                    let cell_data = unsafe { RAM_DISK[src_index] };
+                    let cell_data = unsafe { (*ram_ptr)[src_index] };
                     // if the byte represents an alphanumeric character then get it now
                     let ch = Char::try_from_ascii(cell_data);
                     // draw each row of pixels within the current cell(s)
