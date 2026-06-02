@@ -24,7 +24,7 @@ The Rusty# CoCo emulator utilizes both ARM Cortex-M33 cores on the RP2350:
 
 | Core | Primary Responsibility | Key Tasks |
 | --- | --- | --- |
-| **Core 0** | **Emulator Engine** | 6809 instruction execution, I/O polling (PS/2), device manager updates, and display list construction. |
+| **Core 0** | **Emulator Engine** | 6809 instruction execution, I/O polling (PS/2), device manager updates, and startup display list construction. |
 | **Core 1** | **Video Signal Generator** | Running `core1_main` for the DVI driver. Handles timing and sending pixel data via HSTX. |
 
 ## Memory Configuration
@@ -41,6 +41,8 @@ The RP2350 has 520KB of SRAM. Rusty# CoCo allocates it as follows:
 
 - **Native VDG Resolution**: 256x192 pixels.
 - **Output Target**: VGA 640x480 @ 60Hz.
-- **Vertical Scaling**: 2x (each VDG line is output twice to reach 384 active scanlines).
+- **Vertical Scaling**: 2x (each VDG line is output twice to reach 384 active scanlines). This is handled natively in the DVI driver by defining stripes of height 2 and stride 0, which reuses the same VRAM scanline data twice consecutively without duplicating display list commands.
 - **Horizontal Centering**: 192-pixel black margins on each side (640 - 256 = 384, 384 / 2 = 192).
 - **Vertical Centering**: 48-pixel black margins on top and bottom (480 - 384 = 96, 96 / 2 = 48).
+- **Display List Construction**: Built once at startup (rather than per-frame) since all framebuffer addresses are static. This reduces display list heap usage from **791KB (which exceeded RAM) to ~14KB**.
+

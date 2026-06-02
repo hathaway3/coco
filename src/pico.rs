@@ -163,6 +163,62 @@ mod embedded {
         core.force_reset_vector(0xA000).unwrap();
         core.reset().unwrap();
 
+        // --- DVI Display List Initialization ---
+        // VGA 640x480 @ 60Hz. VERTICAL_REPEAT=1, so we must produce all 480 scanlines.
+        // VDG renders 256x192 pixels in RGB555 format.
+        // We center 256 pixels horizontally (192px black margin each side)
+        // and double each of 192 VDG lines vertically (2x) for 384 active lines.
+        // Layout: 48 top margin + 384 active + 48 bottom margin = 480 lines.
+        {
+            let (mut rb, mut sb) = start_display_list();
+
+            let v_margin = 48u32; // Top/bottom margin (480 - 384) / 2
+            let v_active = 192u32; // VDG lines (each output twice = 384 scanlines)
+            let h_margin = 192u32; // Left/right margin (640 - 256) / 2
+            let h_active = 256usize;
+            let words_per_line = h_active / 2; // 128 u32s per VDG line (2 RGB555 pixels per u32)
+
+            // VDG Framebuffer viewed as u32 (pairs of RGB555 pixels)
+            let display_u32 = unsafe {
+                core::slice::from_raw_parts(dm.display.as_ptr() as *const u32, dm.display.len() / 2)
+            };
+
+            // Top Margin (solid black)
+            rb.begin_stripe(v_margin);
+            rb.end_stripe();
+            sb.begin_stripe(v_margin);
+            sb.solid(640, 0);
+            sb.end_stripe();
+
+            // Active Area: 192 VDG lines, each output twice (384 scanlines)
+            // We use height=2 stripes with stride=0 so the render list automatically reads the same VDG line twice.
+            for line in 0..v_active {
+                let start_idx = (line as usize) * words_per_line;
+                let line_slice = &display_u32[start_idx..start_idx + words_per_line];
+
+                // Render: copy raw RGB555 pixel data into LineBuf using stripe height 2 and stride 0
+                rb.begin_stripe(2);
+                rb.blit_block(line_slice, words_per_line as u32, 0);
+                rb.end_stripe();
+
+                // Scan: black margin, pixel data, black margin
+                sb.begin_stripe(2);
+                sb.solid(h_margin, 0);
+                sb.copy_pixels(h_active as u32);
+                sb.solid(h_margin, 0);
+                sb.end_stripe();
+            }
+
+            // Bottom Margin (solid black)
+            rb.begin_stripe(v_margin);
+            rb.end_stripe();
+            sb.begin_stripe(v_margin);
+            sb.solid(640, 0);
+            sb.end_stripe();
+
+            end_display_list(rb, sb);
+        }
+
         // Main Emulator Loop
         loop {
             // Run core for a slice of cycles
@@ -195,62 +251,6 @@ mod embedded {
                 core.vram_dirty = false;
             }
             dm.update();
-
-            // Build DVI Display List
-            // VGA 640x480 @ 60Hz. VERTICAL_REPEAT=1, so we must produce all 480 scanlines.
-            // VDG renders 256x192 pixels in RGB555 format.
-            // We center 256 pixels horizontally (192px black margin each side)
-            // and double each of 192 VDG lines vertically (2x) for 384 active lines.
-            // Layout: 48 top margin + 384 active + 48 bottom margin = 480 lines.
-            let (mut rb, mut sb) = start_display_list();
-
-            let v_margin = 48u32; // Top/bottom margin (480 - 384) / 2
-            let v_active = 192u32; // VDG lines (each output twice = 384 scanlines)
-            let h_margin = 192u32; // Left/right margin (640 - 256) / 2
-            let h_active = 256usize;
-            let words_per_line = h_active / 2; // 128 u32s per VDG line (2 RGB555 pixels per u32)
-
-            // VDG Framebuffer viewed as u32 (pairs of RGB555 pixels)
-            let display_u32 = unsafe {
-                core::slice::from_raw_parts(dm.display.as_ptr() as *const u32, dm.display.len() / 2)
-            };
-
-            // Top Margin (solid black)
-            rb.begin_stripe(v_margin);
-            rb.end_stripe();
-            sb.begin_stripe(v_margin);
-            sb.solid(640, 0);
-            sb.end_stripe();
-
-            // Active Area: 192 VDG lines, each output twice (384 scanlines)
-            for line in 0..v_active {
-                let start_idx = (line as usize) * words_per_line;
-                let line_slice = &display_u32[start_idx..start_idx + words_per_line];
-
-                // Output each VDG line twice for 2x vertical scaling
-                for _repeat in 0..2 {
-                    // Render: copy raw RGB555 pixel data into LineBuf
-                    rb.begin_stripe(1);
-                    rb.blit_1bpp(line_slice, words_per_line, 1);
-                    rb.end_stripe();
-
-                    // Scan: black margin, pixel data, black margin
-                    sb.begin_stripe(1);
-                    sb.solid(h_margin, 0);
-                    sb.copy_pixels(h_active as u32);
-                    sb.solid(h_margin, 0);
-                    sb.end_stripe();
-                }
-            }
-
-            // Bottom Margin (solid black)
-            rb.begin_stripe(v_margin);
-            rb.end_stripe();
-            sb.begin_stripe(v_margin);
-            sb.solid(640, 0);
-            sb.end_stripe();
-
-            end_display_list(rb, sb);
         }
     }
 }

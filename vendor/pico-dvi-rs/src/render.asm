@@ -131,3 +131,24 @@ render_blit_64_straddle:
     lsrs r3, r7
     ldmia r0!, {r4, r5, r6, r7}
     bx r4
+
+// args: input, stride, count
+.global render_blit_block
+.type render_blit_block,%function
+.thumb_func
+render_blit_block:
+    muls r6, r2
+    adds r5, r6
+    cmp r7, #0
+    beq 2f
+1:
+    ldr r4, [r5]
+    str r4, [r1]
+    adds r5, #4
+    adds r1, #4
+    subs r7, #1
+    bne 1b
+2:
+    ldmia r0!, {r4, r5, r6, r7}
+    bx r4
+

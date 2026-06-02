@@ -18,6 +18,8 @@ extern "C" {
     fn render_blit_64_aligned();
 
     fn render_blit_64_straddle();
+
+    fn render_blit_block();
 }
 
 pub struct Renderlist(Vec<u32>, u32);
@@ -164,6 +166,16 @@ impl RenderlistBuilder {
                 .enumerate()
                 .flat_map(|(word, op)| [op, array[word..].as_ptr() as u32, stride, 0]), // FIXME: some way to make sure we pass the right amount of arguments to these functions?
         );
+    }
+
+    pub fn blit_block(&mut self, array: &[u32], count: u32, stride: u32) {
+        self.v.extend([
+            render_blit_block as *const () as u32,
+            array.as_ptr() as u32,
+            stride,
+            count,
+        ]);
+        self.x += count * 2;
     }
 
     pub fn build(self) -> Renderlist {

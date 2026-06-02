@@ -39,3 +39,19 @@ Rendering the VDG screen is computationally expensive. Skipping rendering using 
 - Introduced a fast boolean `vram_dirty` flag in `Core`.
 - In `_write_u8`, if a write is directed to RAM (address < `0x8000`), `vram_dirty` is flagged.
 - The main emulator loop in `pico.rs` checks `core.vram_dirty` and only locks/marks the VDG dirty when VRAM has actually changed.
+
+---
+
+## 4. DVI Display List OOM Prevention & Block-Copy Optimization
+
+**Modules:** [pico.rs](file:///c:/Users/kg4kn/coco/src/pico.rs), [render.asm](file:///c:/Users/kg4kn/coco/vendor/pico-dvi-rs/src/render.asm), [renderlist.rs](file:///c:/Users/kg4kn/coco/vendor/pico-dvi-rs/src/render/renderlist.rs)
+
+### Problem
+Previously, the emulator used `blit_1bpp` to build the DVI display list. This appended a 4-word command (`[op, ptr, stride, 0]`) for every single `u32` word (128 words per scanline), totaling 512 words per line. For 384 active scanlines, this required ~791 KB of display list memory, causing a fatal Out-of-Memory (OOM) crash since the heap size is 96 KB and total SRAM is 520 KB.
+
+### Optimization
+- **`render_blit_block` Assembly Routine**: Wrote a raw Thumb assembly block copy loop to perform high-speed memory-to-memory block transfers directly from the static display framebuffer to the output line buffer.
+- **Exposed `blit_block`**: Implemented `blit_block` on `RenderlistBuilder` to append a single 4-word command for the entire scanline instead of 128 separate commands.
+- **Vertical Scaling with Stripe Height 2 and Stride 0**: Configured stripes to use a height of 2 and a stride of 0 in both the render list and scan list. The render list automatically reads the same VDG line twice, performing 2x vertical scaling natively with zero extra display list instructions.
+- **Static Display List Construction**: Since framebuffer memory addresses are static, the display list is now built exactly once at startup, completely eliminating runtime rebuilding and heap churn on Core 0. This reduced the display list memory footprint from **791 KB to ~14 KB**.
+
