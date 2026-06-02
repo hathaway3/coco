@@ -122,18 +122,19 @@ fn test_vdg_mode_selection() {
 ///   bits 3-0: which quadrants are lit
 #[test]
 fn test_render_sg4_semigraphic_block() {
-    let mut vdg = Vdg::with_ram(0);
+    let mut vdg = Vdg::with_vram_offset(0);
     vdg.set_mode(VdgMode::SG4);
 
     // Fill VRAM with a semigraphic byte: 0x8F
     // bit 7 = 1 (semigraphic), bits 6-4 = 000 (color green), bits 3-0 = 1111 (all quads lit)
     let vram_byte: u8 = 0x8F; // Green block, all quadrants filled
     unsafe {
+        let ram = &mut *RAM_DISK.as_mut_ptr();
         // Fill the first cell (byte 0) with the semigraphic block
-        RAM_DISK[0] = vram_byte;
+        ram[0] = vram_byte;
         // Fill rest of first row with 0 (space/blank)
         for i in 1..32 {
-            RAM_DISK[i] = 0;
+            ram[i] = 0;
         }
     }
 
@@ -163,15 +164,16 @@ fn test_render_sg4_semigraphic_block() {
 /// In SG4, bytes 0x00-0x7F with bit 7=0 are character codes.
 #[test]
 fn test_render_sg4_text_char() {
-    let mut vdg = Vdg::with_ram(0);
+    let mut vdg = Vdg::with_vram_offset(0);
     vdg.set_mode(VdgMode::SG4);
 
     // Put ASCII 'A' (0x41 -> maps to internal code for A) in VRAM
     // CoCo charset: 0x41 ('A') will be rendered from the built-in font
     unsafe {
-        RAM_DISK[0] = 0x41; // 'A'
+        let ram = &mut *RAM_DISK.as_mut_ptr();
+        ram[0] = 0x41; // 'A'
         for i in 1..32 {
-            RAM_DISK[i] = 0x20; // spaces
+            ram[i] = 0x20; // spaces
         }
     }
 

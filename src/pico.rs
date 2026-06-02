@@ -190,6 +190,10 @@ mod embedded {
                 }
             }
 
+            if core.vram_dirty {
+                dm.vdg.lock().set_dirty();
+                core.vram_dirty = false;
+            }
             dm.update();
 
             // Build DVI Display List

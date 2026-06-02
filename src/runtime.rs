@@ -26,6 +26,9 @@ impl Core {
         self.reg.pc = self._read_u16(memory::AccessType::System, 0xfffe, None)?;
         self.program_start = self.reg.pc;
         self.faulted = false;
+        self.hsync_enabled = false;
+        self.vsync_enabled = false;
+        self.vram_dirty = false;
         Ok(())
     }
     pub fn force_reset_vector(&mut self, addr: u16) -> Result<(), Error> {
@@ -102,45 +105,47 @@ impl Core {
             }
         }
 
-        let mut irq;
-        let mut firq = false;
-        // check for work that needs to be done on hsync
-        // (using hsync as the period at which to poll for pending interrupts
-        // rather than checking between every instruction)
         if self.clock_cycles - self.hsync_prev >= HSYNC_PERIOD_CYCLES {
             self.hsync_prev = self.clock_cycles;
-            {
-                let mut pia = self.pia.lock();
-                // check for hardware firq
-                if self.cart_pending {
-                    firq = pia.cart_firq();
-                }
-                // check for hardware irq
-                irq = pia.hsync_irq();
+            
+            let vsync_elapsed = self.clock_cycles - self.vsync_prev >= VSYNC_PERIOD_CYCLES;
+            if vsync_elapsed {
+                self.vsync_prev = self.clock_cycles;
+            }
 
-                // if it's vsync time, then also check for vsync irq
-                if self.clock_cycles - self.vsync_prev >= VSYNC_PERIOD_CYCLES {
-                    self.vsync_prev = self.clock_cycles;
-                    irq = irq || pia.vsync_irq();
+            if self.hsync_enabled || self.vsync_enabled || self.cart_pending {
+                let mut irq = false;
+                let mut firq = false;
+                {
+                    let mut pia = self.pia.lock();
+                    if self.cart_pending {
+                        firq = pia.cart_firq();
+                    }
+                    if self.hsync_enabled {
+                        irq = pia.hsync_irq();
+                    }
+                    if vsync_elapsed && self.vsync_enabled {
+                        irq = irq || pia.vsync_irq();
+                    }
                 }
-            }
-            if irq {
-                // hardware issued an hsync irq
-                // sync completes whether or not we service the interrupt
-                self.in_sync = false;
-                // if irq is not masked then service it
-                if !self.reg.cc.is_set(registers::CCBit::I) {
-                    self.start_interrupt(InterruptType::Irq)?;
+                if irq {
+                    // hardware issued an hsync irq
+                    // sync completes whether or not we service the interrupt
+                    self.in_sync = false;
+                    // if irq is not masked then service it
+                    if !self.reg.cc.is_set(registers::CCBit::I) {
+                        self.start_interrupt(InterruptType::Irq)?;
+                    }
                 }
-            }
-            if firq {
-                // hardware issued a firq
-                // sync completes whether or not we service the interrupt
-                self.in_sync = false;
-                // if FIRQ is not masked then service it
-                if !self.reg.cc.is_set(registers::CCBit::F) {
-                    self.start_interrupt(InterruptType::Firq)?;
-                    self.cart_pending = false;
+                if firq {
+                    // hardware issued a firq
+                    // sync completes whether or not we service the interrupt
+                    self.in_sync = false;
+                    // if FIRQ is not masked then service it
+                    if !self.reg.cc.is_set(registers::CCBit::F) {
+                        self.start_interrupt(InterruptType::Firq)?;
+                        self.cart_pending = false;
+                    }
                 }
             }
         }

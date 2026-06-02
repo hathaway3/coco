@@ -71,6 +71,9 @@ pub struct Core {
     pub step_mode: debug::StepMode, // determines current step mode (see debug.rs)
     pub next_linear_step: u16, // tracks the address of the next contiguous instruction (differs from PC when there is a branch or jump)
     pub trace: bool,           // if true then display each instruction as it's executed
+    pub hsync_enabled: bool,
+    pub vsync_enabled: bool,
+    pub vram_dirty: bool,
 }
 impl Core {
     pub fn new(
@@ -130,6 +133,9 @@ impl Core {
             step_mode: debug::StepMode::Off,
             next_linear_step: 0,
             trace: unsafe { config::ARGS.trace.load(core::sync::atomic::Ordering::Relaxed) },
+            hsync_enabled: false,
+            vsync_enabled: false,
+            vram_dirty: false,
         }
     }
 

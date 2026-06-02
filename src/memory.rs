@@ -20,39 +20,37 @@ impl Core {
     // reads one byte from RAM
     #[inline(always)]
     pub fn _read_u8(&self, _: AccessType, addr: u16, data: Option<&mut u8>) -> Result<u8, Error> {
-        // first check to see if this address is overridden by the ACIA
-        if let Some(acia_rc) = self.acia.as_ref() {
-            let mut acia = acia_rc.borrow_mut();
-            if acia.owns_address(addr) {
-                return acia.read(addr);
-            }
-        }
-        // if the debugger is enabled then check to see if this read should trigger a breakpoint
         if config::debug() {
             self.debug_check_for_watch_hit(addr);
         }
-        let byte = match addr {
-            0x0000..=0xfeff => {
-                // the address is within the address space of RAM/ROM
-                // just complete the read from memory
-                self.raw_ram[addr as usize]
+        let byte = if addr < 0xff00 {
+            self.raw_ram[addr as usize]
+        } else {
+            if let Some(acia_rc) = self.acia.as_ref() {
+                let mut acia = acia_rc.borrow_mut();
+                if acia.owns_address(addr) {
+                    let b = acia.read(addr)?;
+                    if let Some(data) = data {
+                        *data = b;
+                    }
+                    return Ok(b);
+                }
             }
-            0xff00..=0xff3f => {
-                // pia pair
-                let mut pia = self.pia.lock();
-                pia.read(addr)
-            }
-            0xffc0..=0xffdf => {
-                // sam (write-only)
-                0u8
-            }
-            0xffe0..=0xffff => {
-                // remap interrupt vectors to 0xbfe0-0xbfff
-                self.raw_ram[(addr - 0x4000) as usize]
-            }
-            _ => {
-                warn!("Read at unimplemented address {:04x}", addr);
-                0
+            match addr {
+                0xff00..=0xff3f => {
+                    let mut pia = self.pia.lock();
+                    pia.read(addr)
+                }
+                0xffc0..=0xffdf => {
+                    0u8
+                }
+                0xffe0..=0xffff => {
+                    self.raw_ram[(addr - 0x4000) as usize]
+                }
+                _ => {
+                    warn!("Read at unimplemented address {:04x}", addr);
+                    0
+                }
             }
         };
         if let Some(data) = data {
@@ -113,45 +111,48 @@ impl Core {
     //
     #[inline(always)]
     pub fn _write_u8(&mut self, at: AccessType, addr: u16, data: u8) -> Result<(), Error> {
-        // first check to see if this address is overridden by the ACIA
-        if let Some(acia_rc) = self.acia.as_mut() {
-            let mut acia = acia_rc.borrow_mut();
-            if acia.owns_address(addr) {
-                return acia.write(addr, data);
-            }
-        }
-        // if the debugger is enabled then check to see if this write should trigger a breakpoint
         if config::debug() {
             self.debug_check_for_watch_hit(addr);
         }
-        match addr {
-            0x0000..=0xfeff => {
-                if addr > self.ram_top && at != AccessType::System {
-                    // if the address of the write is in ROM and the write is from regular code then ignore it
-                    return Ok(());
+        if addr < 0xff00 {
+            if addr > self.ram_top && at != AccessType::System {
+                return Ok(());
+            }
+            self.raw_ram[addr as usize] = data;
+            if addr < 0x8000 {
+                self.vram_dirty = true;
+            }
+        } else {
+            if let Some(acia_rc) = self.acia.as_mut() {
+                let mut acia = acia_rc.borrow_mut();
+                if acia.owns_address(addr) {
+                    return acia.write(addr, data);
                 }
-                // the address is within the address space of RAM
-                self.raw_ram[addr as usize] = data;
             }
-            0xff00..=0xff3f => {
-                // pia pair
-                let mut pia = self.pia.lock();
-                pia.write(addr, data);
-            }
-            0xffc0..=0xffdf => {
-                // sam
-                let mut sam = self.sam.lock();
-                sam.write((addr - 0xffc0) as usize);
-            }
-            0xffe0..=0xffff => {
-                if addr > self.ram_top && at != AccessType::System {
-                    // if the address of the write is in ROM and the write is from regular code then ignore it
-                    return Ok(());
+            match addr {
+                0xff00..=0xff3f => {
+                    {
+                        let mut pia = self.pia.lock();
+                        pia.write(addr, data);
+                    }
+                    if addr == 0xff01 {
+                        self.hsync_enabled = (data & 1) == 1;
+                    } else if addr == 0xff03 {
+                        self.vsync_enabled = (data & 1) == 1;
+                    }
                 }
-                // remap interrupt vectors to 0xbfe0-0xbfff
-                self.raw_ram[(addr - 0x4000) as usize] = data;
+                0xffc0..=0xffdf => {
+                    let mut sam = self.sam.lock();
+                    sam.write((addr - 0xffc0) as usize);
+                }
+                0xffe0..=0xffff => {
+                    if addr > self.ram_top && at != AccessType::System {
+                        return Ok(());
+                    }
+                    self.raw_ram[(addr - 0x4000) as usize] = data;
+                }
+                _ => warn!("Write at unimplemented address {:04x}", addr),
             }
-            _ => warn!("Write at unimplemented address {:04x}", addr),
         }
         Ok(())
     }

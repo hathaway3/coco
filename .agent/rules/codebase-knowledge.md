@@ -7,6 +7,7 @@ Before starting any work on the `coco` emulator, **read the knowledge base**:
 - **[.agent/knowledge/pico-hardware.md](../knowledge/pico-hardware.md)** — RP2350 (Pico 2) pin mappings, multicore architecture, and display scaling.
 - **[.agent/knowledge/6809-assembly.md](../knowledge/6809-assembly.md)** — Built-in assembler behavior, directives, and operand syntax.
 - **[.agent/knowledge/drivewire-protocol.md](../knowledge/drivewire-protocol.md)** — DriveWire 4 protocol reference.
+- **[.agent/knowledge/performance-optimizations.md](../knowledge/performance-optimizations.md)** — High-performance execution design (fast memory, lock-free polling).
 
 This document is the single source of truth for codebase patterns. **Update it** when making significant architectural changes.
 
@@ -25,6 +26,9 @@ This document is the single source of truth for codebase patterns. **Update it**
 | **PIA Deadlock** | `Pia0` and `Pia1` hold references to each other; be careful with lock order. | [pia.rs](../src/pia.rs) |
 | **DAC Mux** | DAC value is top 6 bits of `Pia1-A`; `Pia0` reads it to set the joy comparator flag. | [pia.rs](../src/pia.rs) |
 | **Pico PS/2** | Uses GPIO 28 (Data) and 29 (Clock) via PIO; these are the last available pins. | [pico.rs](../src/pico.rs) |
+| **Memory Fast-Path** | Addresses below `0xFF00` bypass peripheral checks in `_read_u8` / `_write_u8`. | [memory.rs](../src/memory.rs) |
+| **Lock-Free HSync** | Interrupt polling is skipped if HSync/VSync interrupts are disabled. | [runtime.rs](../src/runtime.rs) |
+| **VRAM Dirty Check** | VDG rendering is skipped unless `core.vram_dirty` is flagged. | [pico.rs](../src/pico.rs) |
 
 ## Hardware Error Mapping (DriveWire/OS-9)
 
