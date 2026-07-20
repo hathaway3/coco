@@ -82,19 +82,24 @@ To add a real CoCo boot ROM:
 > [!IMPORTANT]
 > SD Card support for dynamic ROM loading is coming soon.
 
-## Input & Keyboard
+## Peripherals & Hardware Configuration
 
+### Input & Keyboard
 - **Host Build** (`cargo run`): Uses standard keyboard input via terminal or window.
 - **RP2350 Build**:
   - **PS/2 Keyboard**: Implemented via PIO.
     - **Connect Data Line**: GPIO 28
     - **Connect Clock Line**: GPIO 29
     - **VCC/GND**: Connect to 5V (or 3.3V) and GND.
-  - **USB Keyboard**: Placeholder (Not yet implemented).
-  - Debug output is available via the USB Serial / UART console.
+  - **USB Keyboard (Serial Bridge)**: Fully supported! Configures the RP2350's native USB controller as a CDC ACM USB Serial connection. Typing into a serial terminal on the host computer maps directly into emulated keyboard inputs.
+  - **Analog Joysticks**: Fully supported!
+    - **Connect X-axis**: GPIO 26 (ADC0)
+    - **Connect Y-axis**: GPIO 27 (ADC1)
+    - **Connect Button 1**: GPIO 2 (active-low with pull-up)
+    - **Connect Button 2**: GPIO 3 (active-low with pull-up)
 
-> [!WARNING]
-> GPIO 28 and 29 are the last available GPIO pins on the RP2350. Using them for PS/2 keyboard limits expansion options.
+### Audio Output
+- **RP2350 Build**: Zero-latency hardware audio output is supported via **GPIO 0** (PWM slice 0, channel A). The 6-bit DAC and 1-bit sound outputs are mapped directly to the PWM carrier duty cycle.
 
 ## Memory Usage
 

@@ -287,6 +287,13 @@ impl PiaPair {
 
     // --- External Hardware Signals ---
 
+    pub fn set_joystick(&mut self, x: u8, y: u8, button1: bool, button2: bool) {
+        self.chip0.joy_x = x;
+        self.chip0.joy_y = y;
+        self.chip0.joy_sw_1 = button1;
+        self.chip0.joy_sw_2 = button2;
+    }
+
     pub fn set_key(&mut self, key: u8, pressed: bool) {
         if let Some((row, col)) = self.ascii_to_matrix(key) {
             if pressed {

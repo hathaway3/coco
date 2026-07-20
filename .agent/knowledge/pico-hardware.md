@@ -15,8 +15,14 @@ This document details the hardware configuration, pin mappings, and multicore ar
 | **GPIO 17** | **DVI D2-** | HSTX Lane 2 negative. |
 | **GPIO 18** | **DVI D1+** | HSTX Lane 1 positive. |
 | **GPIO 19** | **DVI D1-** | HSTX Lane 1 negative. |
-| **GPIO 28** | **PS/2 Data** | PS/2 Keyboard data line (PIO 0). |
-| **GPIO 29** | **PS/2 Clock** | PS/2 Keyboard clock line (PIO 0). |
+| **GPIO 0** | **Audio Out** | PWM Audio output (PWM 0, Channel A). |
+| **GPIO 2** | **Joy Button 1**| Joystick Button 1 (Pull-up Input). |
+| **GPIO 3** | **Joy Button 2**| Joystick Button 2 (Pull-up Input). |
+| **GPIO 26**| **Joy X Axis**  | Analog Joystick X-Axis (ADC 0). |
+| **GPIO 27**| **Joy Y Axis**  | Analog Joystick Y-Axis (ADC 1). |
+| **GPIO 28**| **PS/2 Data**   | PS/2 Keyboard data line (PIO 0). |
+| **GPIO 29**| **PS/2 Clock**  | PS/2 Keyboard clock line (PIO 0). |
+| **USB**     | **USB Keyboard**| Native CDC ACM USB Serial Keyboard Bridge. |
 
 ## Multicore Architecture
 

@@ -15,6 +15,7 @@ mod embedded {
     use hal::pac;
     use panic_probe as _;
     use rp235x_hal as hal;
+    use embedded_hal::digital::InputPin;
 
     // Import pico-dvi-rs library
     use pico_dvi_rs::dvi; // Module for setup functions
@@ -101,6 +102,15 @@ mod embedded {
             coco::AUDIO_CALLBACK = Some(update_audio_pwm);
         }
 
+        // Initialize ADC for Joystick analog axes
+        let mut adc = hal::adc::Adc::new(pac.ADC, &mut pac.RESETS);
+        let mut joy_x_pin = hal::adc::AdcPin::new(pins.gpio26.into_floating_input()).unwrap();
+        let mut joy_y_pin = hal::adc::AdcPin::new(pins.gpio27.into_floating_input()).unwrap();
+
+        // Initialize Joystick Button GPIOs with Pull-Up
+        let mut joy_btn1_pin = pins.gpio2.into_pull_up_input();
+        let mut joy_btn2_pin = pins.gpio3.into_pull_up_input();
+
         defmt::info!("CoCo Emulator starting on RP2350...");
 
         // --- DVI Initialization ---
@@ -165,8 +175,23 @@ mod embedded {
         // Initialize PS/2 Keyboard Driver
         let mut ps2_kb = Ps2Keyboard::new(&mut pio0, sm0, ps2_data.id().num, ps2_clk.id().num);
 
-        // Initialize USB Keyboard Driver (Placeholder)
-        let mut usb_kb = UsbKeyboard::new();
+        // Initialize USB Keyboard Driver (CDC Serial ACM)
+        static mut USB_BUS: Option<usb_device::bus::UsbBusAllocator<rp235x_hal::usb::UsbBus>> = None;
+        let usb_bus = usb_device::bus::UsbBusAllocator::new(rp235x_hal::usb::UsbBus::new(
+            pac.USB,
+            pac.USB_DPRAM,
+            _clocks.usb_clock,
+            true,
+            &mut pac.RESETS,
+        ));
+        unsafe {
+            USB_BUS = Some(usb_bus);
+        }
+        let usb_bus_ref = unsafe {
+            #[allow(static_mut_refs)]
+            USB_BUS.as_ref().unwrap()
+        };
+        let mut usb_kb = UsbKeyboard::new(usb_bus_ref);
 
         // --- Emulator Core Initialization ---
         let mut dm = DeviceManager::new();
@@ -280,6 +305,21 @@ mod embedded {
                     InputEvent::Press(k) => pia.set_key(k, true),
                     InputEvent::Release(k) => pia.set_key(k, false),
                 }
+            }
+
+            // Poll Joystick Input (read ADC and Buttons)
+            let (joy_x, joy_y) = {
+                let x_raw = adc.read(&mut joy_x_pin).unwrap_or(2048);
+                let y_raw = adc.read(&mut joy_y_pin).unwrap_or(2048);
+                ((x_raw / 16) as u8, (y_raw / 16) as u8)
+            };
+
+            let joy_btn1 = joy_btn1_pin.is_low().unwrap_or(false);
+            let joy_btn2 = joy_btn2_pin.is_low().unwrap_or(false);
+
+            {
+                let mut pia = dm.pia.lock();
+                pia.set_joystick(joy_x, joy_y, joy_btn1, joy_btn2);
             }
 
             if core.vram_dirty {

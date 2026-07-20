@@ -32,6 +32,8 @@ panic-probe = { version = "0.3", features = ["print-defmt"] }
 # Input dependencies
 pio = "0.3.0"
 pio-proc = "0.3.0"
+usb-device = "0.3.2"
+usbd-serial = "0.2.2"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

@@ -32,8 +32,6 @@ cargo clippy
 cargo fmt
 ```
 
-Known issue: `Cargo.toml` declares a `[[test]]` target `dm-test` at `src/dm_test.rs`, but that file does not exist; if `cargo test` fails on it, that's why.
-
 Tests live in `src/cpu_test.rs` and `src/vdg_test.rs` (`#[cfg(test)]` modules). The test harness (`src/test.rs`) runs 6809 assembly programs and checks `;! <ident> = <value>` TestCriterion assertion comments embedded in them (e.g. `;! a = #$55`).
 
 ## Agent Knowledge Base
@@ -70,5 +68,8 @@ Tests live in `src/cpu_test.rs` and `src/vdg_test.rs` (`#[cfg(test)]` modules). 
 - Addresses below `0xFF00` take a fast path in `_read_u8`/`_write_u8` that bypasses peripheral checks.
 - `Pia0` and `Pia1` hold references to each other — watch lock ordering to avoid deadlock (`src/pia.rs`).
 - VDG rendering is skipped unless `core.vram_dirty` is set; interrupt polling is skipped when HSync/VSync interrupts are disabled.
-- PS/2 keyboard uses PIO on GPIO 28 (data) / 29 (clock) — the last free pins; DVI occupies GPIO 12–19.
+- PS/2 keyboard uses PIO on GPIO 28 (data) / 29 (clock); DVI occupies GPIO 12–19. USB Keyboard input is bridged over USB CDC ACM Serial.
+- Analog joystick is emulated via ADC0 on GPIO 26 (X-axis), ADC1 on GPIO 27 (Y-axis), GPIO 2 (Button 1), and GPIO 3 (Button 2).
+- Hardware audio is output via PWM0 on GPIO 0.
+- Emulator execution speed is throttled to exactly 0.895 MHz using the RP2350 microsecond timer.
 - Memory budget on the RP2350 (520KB total): 64KB `RAM_DISK` + 98KB display buffer + 96KB heap, leaving roughly 170–190KB for stacks and DVI buffers. Avoid large stack allocations.

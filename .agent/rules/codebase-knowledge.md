@@ -25,7 +25,7 @@ This document is the single source of truth for codebase patterns. **Update it**
 | **Interrupt Vectors** | Addresses `0xFFE0..=0xFFFF` are remapped to `0xBFE0..=0xBFFF` in `raw_ram`. | [memory.rs](../src/memory.rs) |
 | **PIA Deadlock** | `Pia0` and `Pia1` hold references to each other; be careful with lock order. | [pia.rs](../src/pia.rs) |
 | **DAC Mux** | DAC value is top 6 bits of `Pia1-A`; `Pia0` reads it to set the joy comparator flag. | [pia.rs](../src/pia.rs) |
-| **Pico PS/2** | Uses GPIO 28 (Data) and 29 (Clock) via PIO; these are the last available pins. | [pico.rs](../src/pico.rs) |
+| **Pico Peripherals** | Keyboard on PS/2 (GPIO 28/29) & USB Serial; Joysticks on GPIO 2/3/26/27; Audio on PWM GPIO 0. | [pico.rs](../src/pico.rs) |
 | **Memory Fast-Path** | Addresses below `0xFF00` bypass peripheral checks in `_read_u8` / `_write_u8`. | [memory.rs](../src/memory.rs) |
 | **Lock-Free HSync** | Interrupt polling is skipped if HSync/VSync interrupts are disabled. | [runtime.rs](../src/runtime.rs) |
 | **VRAM Dirty Check** | VDG rendering is skipped unless `core.vram_dirty` is flagged. | [pico.rs](../src/pico.rs) |
