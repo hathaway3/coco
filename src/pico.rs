@@ -71,6 +71,14 @@ mod embedded {
             2_u32.div_ceil(HSTX_MULTIPLE),
         );
 
+        let timer = hal::Timer::new_timer0(pac.TIMER0, &mut pac.RESETS, &_clocks);
+
+        // Initialize PWM for audio on GPIO 0
+        let pwm_slices = hal::pwm::Slices::new(pac.PWM, &mut pac.RESETS);
+        let mut pwm = pwm_slices.pwm0;
+        pwm.set_top(255);
+        pwm.enable();
+
         let sio = hal::Sio::new(pac.SIO);
         let pins = hal::gpio::Pins::new(
             pac.IO_BANK0,
@@ -78,6 +86,20 @@ mod embedded {
             sio.gpio_bank0,
             &mut pac.RESETS,
         );
+
+        let mut channel_a = pwm.channel_a;
+        channel_a.output_to(pins.gpio0);
+
+        fn update_audio_pwm(val: u8) {
+            unsafe {
+                let cc_reg = 0x4005000c as *mut u32;
+                core::ptr::write_volatile(cc_reg, val as u32);
+            }
+        }
+
+        unsafe {
+            coco::AUDIO_CALLBACK = Some(update_audio_pwm);
+        }
 
         defmt::info!("CoCo Emulator starting on RP2350...");
 
@@ -164,12 +186,9 @@ mod embedded {
         core.reset().unwrap();
 
         // --- DVI Display List Initialization ---
-        // VGA 640x480 @ 60Hz. VERTICAL_REPEAT=1, so we must produce all 480 scanlines.
-        // VDG renders 256x192 pixels in RGB555 format.
-        // We center 256 pixels horizontally (192px black margin each side)
-        // and double each of 192 VDG lines vertically (2x) for 384 active lines.
-        // Layout: 48 top margin + 384 active + 48 bottom margin = 480 lines.
-        {
+        let mut current_border_color = 0x0000u16;
+
+        fn build_dvi_display_list(dm: &mut DeviceManager, border_color: u16) {
             let (mut rb, mut sb) = start_display_list();
 
             let v_margin = 48u32; // Top/bottom margin (480 - 384) / 2
@@ -183,11 +202,13 @@ mod embedded {
                 core::slice::from_raw_parts(dm.display.as_ptr() as *const u32, dm.display.len() / 2)
             };
 
-            // Top Margin (solid black)
+            let border_u32 = ((border_color as u32) << 16) | (border_color as u32);
+
+            // Top Margin
             rb.begin_stripe(v_margin);
             rb.end_stripe();
             sb.begin_stripe(v_margin);
-            sb.solid(640, 0);
+            sb.solid(640, border_u32);
             sb.end_stripe();
 
             // Active Area: 192 VDG lines, each output twice (384 scanlines)
@@ -201,32 +222,47 @@ mod embedded {
                 rb.blit_block(line_slice, words_per_line as u32, 0);
                 rb.end_stripe();
 
-                // Scan: black margin, pixel data, black margin
+                // Scan: margin, pixel data, margin
                 sb.begin_stripe(2);
-                sb.solid(h_margin, 0);
+                sb.solid(h_margin, border_u32);
                 sb.copy_pixels(h_active as u32);
-                sb.solid(h_margin, 0);
+                sb.solid(h_margin, border_u32);
                 sb.end_stripe();
             }
 
-            // Bottom Margin (solid black)
+            // Bottom Margin
             rb.begin_stripe(v_margin);
             rb.end_stripe();
             sb.begin_stripe(v_margin);
-            sb.solid(640, 0);
+            sb.solid(640, border_u32);
             sb.end_stripe();
 
             end_display_list(rb, sb);
         }
 
+        build_dvi_display_list(&mut dm, current_border_color);
+
+        let mut base_us = timer.get_counter().ticks();
+        let mut base_cycles = core.clock_cycles;
+
         // Main Emulator Loop
         loop {
             // Run core for a slice of cycles
-            for _ in 0..10000 {
-                // Increased slice
+            for _ in 0..200 {
                 if let Err(_e) = core.exec_one() {
                     break;
                 }
+            }
+
+            // Throttling to match target CPU speed (~0.895 MHz)
+            if core.clock_cycles < base_cycles {
+                base_cycles = core.clock_cycles;
+                base_us = timer.get_counter().ticks();
+            }
+            let elapsed_cycles = core.clock_cycles - base_cycles;
+            let expected_elapsed_us = (elapsed_cycles * 1000000) / 894886;
+            while (timer.get_counter().ticks() - base_us) < expected_elapsed_us {
+                core::hint::spin_loop();
             }
             // Update devices
 
@@ -251,6 +287,20 @@ mod embedded {
                 core.vram_dirty = false;
             }
             dm.update();
+
+            let border_color = {
+                let css = {
+                    let pia = dm.pia.lock();
+                    (pia.get_vdg_bits() & 1) == 1
+                };
+                let vdg = dm.vdg.lock();
+                vdg.get_border_color(css).to_rgb555()
+            };
+
+            if border_color != current_border_color {
+                current_border_color = border_color;
+                build_dvi_display_list(&mut dm, border_color);
+            }
         }
     }
 }

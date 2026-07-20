@@ -243,12 +243,24 @@ impl PiaPair {
 
                 match i {
                     0 if self.chip1.sound_enabled && !self.chip1.dac_sel_a && !self.chip1.dac_sel_b => {
+                        let val = (self.chip1.ab[0].read_output() >> 2) << 2;
+                        unsafe {
+                            if let Some(cb) = crate::AUDIO_CALLBACK {
+                                cb(val);
+                            }
+                        }
                         let fdata = ((self.chip1.ab[0].read_output() >> 2) as f32 - 31.0) / 32.0;
                         self.push_audio_sample(fdata);
                     }
                     2 => {
                         let bit = self.chip1.ab[1].read_output() & 2 == 2;
                         if bit != self.chip1.last_bit_sound {
+                            let val = if bit { 255 } else { 0 };
+                            unsafe {
+                                if let Some(cb) = crate::AUDIO_CALLBACK {
+                                    cb(val);
+                                }
+                            }
                             let fdata = if bit { 0.5 } else { -0.5 };
                             self.push_audio_sample(fdata);
                         }

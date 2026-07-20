@@ -238,6 +238,17 @@ impl Vdg {
         }
     }
 
+    pub fn get_border_color(&self, css: bool) -> Color {
+        let md = self.mode.get_details();
+        if md.color_bits == 1 {
+            Color::Black
+        } else if css {
+            Color::Buff
+        } else {
+            Color::Green
+        }
+    }
+
     pub fn set_mode(&mut self, mode: VdgMode) {
         if self.mode != mode {
             info!("VDG VdgMode changed from {:?} to {:?}", self.mode, mode);

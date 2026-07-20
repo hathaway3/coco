@@ -76,3 +76,5 @@ impl RamDiskWrapper {
 pub static RAM_DISK: RamDiskWrapper = RamDiskWrapper::new();
 pub static mut DISPLAY_BUFFER: [u16; SCREEN_DIM_X * SCREEN_DIM_Y] =
     [0x0000; SCREEN_DIM_X * SCREEN_DIM_Y];
+
+pub static mut AUDIO_CALLBACK: Option<fn(u8)> = None;
