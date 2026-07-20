@@ -1,6 +1,4 @@
 
-use spin::Mutex;
-
 /// Simple interface for reading and writing the Synchronous Address Multiplexer
 /// Sam Control Register bit definitions:
 /// Bits  | Usage

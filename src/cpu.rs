@@ -132,7 +132,7 @@ impl Core {
             history: None,
             step_mode: debug::StepMode::Off,
             next_linear_step: 0,
-            trace: unsafe { config::ARGS.trace.load(core::sync::atomic::Ordering::Relaxed) },
+            trace: config::ARGS.trace.load(core::sync::atomic::Ordering::Relaxed),
             hsync_enabled: false,
             vsync_enabled: false,
             vram_dirty: false,

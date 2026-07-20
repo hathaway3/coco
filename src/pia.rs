@@ -1,6 +1,5 @@
 use super::*;
 use alloc::collections::VecDeque;
-use spin::Mutex;
 
 pub trait Pia {
     fn read(&mut self, reg_num: usize) -> u8;

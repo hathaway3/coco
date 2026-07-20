@@ -2,7 +2,7 @@ use crate::sam::Sam;
 use spin::Mutex;
 use alloc::sync::Arc;
 use crate::vdg::{Vdg, VdgMode};
-use crate::{RAM_DISK, DISPLAY_BUFFER};
+use crate::DISPLAY_BUFFER;
 
 // DeviceManager should be instantiated on the main thread and then clones of its
 // member fields can be sent to other threads. DeviceManger methods must only be
@@ -55,7 +55,7 @@ impl DeviceManager {
         let vram_offset;
         {
             // use SAM and PIA pair to determine current VDG mode
-            let mut pia = self.pia.lock();
+            let pia = self.pia.lock();
             let sam = self.sam.lock();
             let pia_bits = pia.get_vdg_bits();
             mode = VdgMode::try_from_pia_and_sam(pia_bits, sam.get_vdg_bits());

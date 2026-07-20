@@ -24,10 +24,6 @@ macro_rules! warn {
     ($($p:expr),+ $(,)?) => {{}};
 }
 
-macro_rules! acia_dbg {
-    ($($e:expr),+ $(,)?) => {{}};
-}
-
 macro_rules! line_err {
     ($line:expr, $kind:expr, $($arg:tt)*) => {
         crate::error::Error::new($kind, None, &alloc::format!($($arg)*))
@@ -58,35 +54,9 @@ macro_rules! syntax_err_ctx {
     };
 }
 
-macro_rules! instruction_invalid {
-    ($ctx:expr, $($arg:tt)*) => {
-        crate::error::Error::new($crate::error::ErrorKind::Runtime, $ctx, &alloc::format!($($arg)*))
-    };
-}
-
 macro_rules! runtime_err {
     ($ctx:expr, $($arg:tt)*) => {
         crate::error::Error::new($crate::error::ErrorKind::Runtime, $ctx, &alloc::format!($($arg)*))
-    };
-}
-
-macro_rules! err {
-    ($kind:expr,$ctx:expr, $($msg:expr),* $(,)?) => {
-        Error::new($kind, $ctx, "")
-    };
-}
-
-macro_rules! within_usize_bound {
-    ($val:expr,$bound:expr) => {
-        ((($val) as usize) < (($bound) as usize))
-    };
-}
-
-macro_rules! break_on_error {
-    ($result: expr) => {
-        if ($result).is_err() {
-            break;
-        }
     };
 }
 

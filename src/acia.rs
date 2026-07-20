@@ -9,7 +9,6 @@ pub struct Acia {
     recv_cache: Option<u8>,
     tx_cache: Option<u8>,
     pub accessed: bool,
-    tty_count: Arc<Mutex<i32>>,
 }
 
 impl Acia {
@@ -63,14 +62,11 @@ impl Acia {
 
 impl Acia {
     pub fn new(addr: u16) -> Result<Acia, Error> {
-        let tty_count = Arc::new(Mutex::new(0));
-
         Ok(Acia {
             addr,
             recv_cache: None,
             tx_cache: None,
             accessed: false,
-            tty_count,
         })
     }
 

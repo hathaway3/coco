@@ -1,4 +1,3 @@
-use crate::pia::Pia;
 
 use crate::cpu::Core;
 use crate::error::Error;

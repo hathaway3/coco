@@ -27,7 +27,7 @@ pub struct CCInfo {
     bit: CCBit,
     mask: u8,
     short: char,
-    name: &'static str,
+    _name: &'static str,
 }
 macro_rules! sign_bit_8 {
     ($b:ident) => {
@@ -61,14 +61,14 @@ macro_rules! twos_comp {
 /// Metadata for each condition code register bit.
 #[rustfmt::skip]
 static CC_TABLE: [CCInfo;8] = [
-    CCInfo {bit: CCBit::C, mask: 0x01, short: 'C', name: "carry"},
-    CCInfo {bit: CCBit::V, mask: 0x02, short: 'V', name: "overflow"},
-    CCInfo {bit: CCBit::Z, mask: 0x04, short: 'Z', name: "zero"},
-    CCInfo {bit: CCBit::N, mask: 0x08, short: 'N', name: "negative"},
-    CCInfo {bit: CCBit::I, mask: 0x10, short: 'I', name: "IRQ mask"},
-    CCInfo {bit: CCBit::H, mask: 0x20, short: 'H', name: "half carry"},
-    CCInfo {bit: CCBit::F, mask: 0x40, short: 'F', name: "FIRQ mask"},
-    CCInfo {bit: CCBit::E, mask: 0x80, short: 'E', name: "entire flag"}
+    CCInfo {bit: CCBit::C, mask: 0x01, short: 'C', _name: "carry"},
+    CCInfo {bit: CCBit::V, mask: 0x02, short: 'V', _name: "overflow"},
+    CCInfo {bit: CCBit::Z, mask: 0x04, short: 'Z', _name: "zero"},
+    CCInfo {bit: CCBit::N, mask: 0x08, short: 'N', _name: "negative"},
+    CCInfo {bit: CCBit::I, mask: 0x10, short: 'I', _name: "IRQ mask"},
+    CCInfo {bit: CCBit::H, mask: 0x20, short: 'H', _name: "half carry"},
+    CCInfo {bit: CCBit::F, mask: 0x40, short: 'F', _name: "FIRQ mask"},
+    CCInfo {bit: CCBit::E, mask: 0x80, short: 'E', _name: "entire flag"}
 ];
 
 impl CCBit {
