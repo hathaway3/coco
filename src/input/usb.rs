@@ -38,6 +38,18 @@ impl UsbKeyboard {
             pressed_key: None,
         }
     }
+
+    pub fn read_serial(&mut self, buf: &mut [u8]) -> Result<usize, usb_device::UsbError> {
+        self.serial.read(buf)
+    }
+
+    pub fn write_serial(&mut self, buf: &[u8]) -> Result<usize, usb_device::UsbError> {
+        self.serial.write(buf)
+    }
+
+    pub fn poll_usb(&mut self) -> bool {
+        self.usb_dev.poll(&mut [&mut self.serial])
+    }
 }
 
 #[cfg(not(target_os = "none"))]

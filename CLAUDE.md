@@ -43,7 +43,7 @@ Tests live in `src/cpu_test.rs` and `src/vdg_test.rs` (`#[cfg(test)]` modules). 
 - `.agent/knowledge/pico-hardware.md` — RP2350 pins, multicore layout, display scaling
 - `.agent/knowledge/6809-assembly.md` — built-in assembler directives and syntax
 - `.agent/knowledge/performance-optimizations.md` — fast memory path, lock-free polling design
-- `.agent/knowledge/drivewire-protocol.md` — DriveWire 4 protocol (planned feature; no code in `src/` yet)
+- `.agent/knowledge/drivewire-protocol.md` — DriveWire 4 protocol reference (fully supported via bridged ACIA)
 - `.agent/workflows/` — step-by-step guides for adding opcodes and debugging the emulator
 
 ## Architecture
@@ -68,7 +68,7 @@ Tests live in `src/cpu_test.rs` and `src/vdg_test.rs` (`#[cfg(test)]` modules). 
 - Addresses below `0xFF00` take a fast path in `_read_u8`/`_write_u8` that bypasses peripheral checks.
 - `Pia0` and `Pia1` hold references to each other — watch lock ordering to avoid deadlock (`src/pia.rs`).
 - VDG rendering is skipped unless `core.vram_dirty` is set; interrupt polling is skipped when HSync/VSync interrupts are disabled.
-- PS/2 keyboard uses PIO on GPIO 28 (data) / 29 (clock); DVI occupies GPIO 12–19. USB Keyboard input is bridged over USB CDC ACM Serial.
+- PS/2 keyboard uses PIO on GPIO 28 (data) / 29 (clock); DVI occupies GPIO 12–19. USB Keyboard input and DriveWire 4 are bridged over USB CDC ACM Serial (self-sensing).
 - Analog joystick is emulated via ADC0 on GPIO 26 (X-axis), ADC1 on GPIO 27 (Y-axis), GPIO 2 (Button 1), and GPIO 3 (Button 2).
 - Hardware audio is output via PWM0 on GPIO 0.
 - Emulator execution speed is throttled to exactly 0.895 MHz using the RP2350 microsecond timer.
