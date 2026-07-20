@@ -49,10 +49,6 @@ lto = true        # link time optimization
 opt-level = "s"   # optimize for size
 panic = "abort"   # remove stack unwinding code
 
-[[test]]
-name = "dm-test"
-path = "src/dm_test.rs"
-harness = false
 
 [[bin]]
 name = "coco"

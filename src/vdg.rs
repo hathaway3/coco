@@ -1,5 +1,7 @@
 #![allow(static_mut_refs)]
 use super::*;
+use core::sync::atomic::{AtomicBool, Ordering};
+pub static ARTIFACT_ENABLED: AtomicBool = AtomicBool::new(true);
 
 #[derive(Debug, Clone, Copy)]
 pub struct VdgModeDetails {
@@ -327,33 +329,54 @@ impl Vdg {
         let cells_per_col = SCREEN_DIM_Y / md.cell_y;
         let src_bytes_per_row = cells_per_row / cells_per_src_byte;
         let mut dst_index = 0usize;
-        let (fg_color, bg_color) = (Color::Green, Color::Black);
+        let fg_color = if css { Color::Buff } else { Color::Green };
+        let bg_color = Color::Black;
+        let is_rg6 = self.mode == VdgMode::RG6;
+        let artifacting = is_rg6 && ARTIFACT_ENABLED.load(Ordering::Relaxed);
         for src_row in 0..cells_per_col {
             for _ in 0..md.cell_y {
                 // repeat for each row in each cell
                 for src_col in 0..src_bytes_per_row {
                     let src_index = self.vram_offset + src_col + src_row * src_bytes_per_row;
                     let mut src_data = unsafe { (*ram_ptr)[src_index] } as u16;
-                    for _ in 0..cells_per_src_byte {
-                        let color = match md.color_bits {
-                            1 => {
-                                src_data <<= 1;
-                                if src_data & 0x0100 == 0 {
-                                    bg_color
-                                } else {
-                                    fg_color
+                    if artifacting {
+                        for _ in 0..4 {
+                            let high = (src_data & 0x80) != 0;
+                            let low = (src_data & 0x40) != 0;
+                            src_data <<= 2;
+                            let color = match (high, low) {
+                                (false, false) => Color::Black,
+                                (true, true) => Color::Buff,
+                                (false, true) => if css { Color::Red } else { Color::Cyan },
+                                (true, false) => if css { Color::Cyan } else { Color::Red },
+                            };
+                            let rgb = color.to_rgb555();
+                            display[dst_index] = rgb;
+                            display[dst_index + 1] = rgb;
+                            dst_index += 2;
+                        }
+                    } else {
+                        for _ in 0..cells_per_src_byte {
+                            let color = match md.color_bits {
+                                1 => {
+                                    src_data <<= 1;
+                                    if src_data & 0x0100 == 0 {
+                                        bg_color
+                                    } else {
+                                        fg_color
+                                    }
                                 }
+                                2 => {
+                                    src_data <<= 2;
+                                    Color::from_2bits(((src_data & 0x300) >> 8) as u8, css)
+                                }
+                                _ => unreachable!(),
+                            };
+                            // draw all pixels for this pixel row of this cell
+                            for _ in 0..md.cell_x {
+                                display[dst_index] = color.to_rgb555();
+                                dst_index += 1;
                             }
-                            2 => {
-                                src_data <<= 2;
-                                Color::from_2bits(((src_data & 0x300) >> 8) as u8, css)
-                            }
-                            _ => unreachable!(),
-                        };
-                        // draw all pixels for this pixel row of this cell
-                        for _ in 0..md.cell_x {
-                            display[dst_index] = color.to_rgb555();
-                            dst_index += 1;
                         }
                     }
                 }

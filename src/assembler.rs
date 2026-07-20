@@ -473,7 +473,7 @@ impl Assembler {
         for tc in &mut program.results {
             // Each TestCriterion must be parsed AFTER build is complete so that all labels can be resolved.
             if let Err(e) = self.parser.parse_test_criterion(tc, &program.labels) {
-                return Err(line_err!(tc.line_number, e.kind, e.msg));
+                return Err(line_err!(tc.line_number, e.kind, "{}", e.msg));
             }
         }
         Ok(())

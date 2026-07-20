@@ -1,6 +1,8 @@
 use crate::vdg::{Color, Vdg, VdgMode, SCREEN_DIM_X, SCREEN_DIM_Y};
 use crate::RAM_DISK;
 
+static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Verify all Color::to_rgb555() values are correct RGB555 bit patterns.
 /// RGB555 format: 0bRRRRR_GGGGG_BBBBB (bits 14-10: R, 9-5: G, 4-0: B)
 #[test]
@@ -122,6 +124,7 @@ fn test_vdg_mode_selection() {
 ///   bits 3-0: which quadrants are lit
 #[test]
 fn test_render_sg4_semigraphic_block() {
+    let _lock = TEST_LOCK.lock().unwrap();
     let mut vdg = Vdg::with_vram_offset(0);
     vdg.set_mode(VdgMode::SG4);
 
@@ -164,6 +167,7 @@ fn test_render_sg4_semigraphic_block() {
 /// In SG4, bytes 0x00-0x7F with bit 7=0 are character codes.
 #[test]
 fn test_render_sg4_text_char() {
+    let _lock = TEST_LOCK.lock().unwrap();
     let mut vdg = Vdg::with_vram_offset(0);
     vdg.set_mode(VdgMode::SG4);
 
@@ -208,3 +212,101 @@ fn test_render_sg4_text_char() {
         "Character 'A' should have at least some black pixels (background)"
     );
 }
+
+/// Verify VDG renders RG6 (PMODE 4) mode with correct NTSC Color Artifacting.
+#[test]
+fn test_render_rg6_artifact_colors() {
+    use crate::vdg::{ARTIFACT_ENABLED, Color};
+    use core::sync::atomic::Ordering;
+
+    let _lock = TEST_LOCK.lock().unwrap();
+    let mut vdg = Vdg::with_vram_offset(0);
+    vdg.set_mode(VdgMode::RG6);
+
+    // Set first byte of VRAM to: 0b01101100
+    // Pairs:
+    //   - 01 -> Color 1
+    //   - 10 -> Color 2
+    //   - 11 -> Buff (White)
+    //   - 00 -> Black
+    unsafe {
+        let ram = &mut *RAM_DISK.as_mut_ptr();
+        ram[0] = 0b01101100;
+        // clear the rest of the row
+        for i in 1..32 {
+            ram[i] = 0;
+        }
+    }
+
+    let cyan = Color::Cyan.to_rgb555();
+    let red = Color::Red.to_rgb555();
+    let buff = Color::Buff.to_rgb555();
+    let black = Color::Black.to_rgb555();
+
+    // Case 1: Artifacting enabled, CSS = false
+    ARTIFACT_ENABLED.store(true, Ordering::Relaxed);
+    let mut display = [0u16; SCREEN_DIM_X * SCREEN_DIM_Y];
+    vdg.set_dirty();
+    vdg.render(&mut display, false);
+
+    // Each pair translates to two output pixels
+    // pixels 0, 1 -> Cyan
+    // pixels 2, 3 -> Red
+    // pixels 4, 5 -> Buff
+    // pixels 6, 7 -> Black
+    assert_eq!(display[0], cyan);
+    assert_eq!(display[1], cyan);
+    assert_eq!(display[2], red);
+    assert_eq!(display[3], red);
+    assert_eq!(display[4], buff);
+    assert_eq!(display[5], buff);
+    assert_eq!(display[6], black);
+    assert_eq!(display[7], black);
+
+    // Case 2: Artifacting enabled, CSS = true (colors 1 & 2 swapped)
+    let mut display = [0u16; SCREEN_DIM_X * SCREEN_DIM_Y];
+    vdg.set_dirty();
+    vdg.render(&mut display, true);
+
+    // pixels 0, 1 -> Red (swapped)
+    // pixels 2, 3 -> Cyan (swapped)
+    // pixels 4, 5 -> Buff
+    // pixels 6, 7 -> Black
+    assert_eq!(display[0], red);
+    assert_eq!(display[1], red);
+    assert_eq!(display[2], cyan);
+    assert_eq!(display[3], cyan);
+    assert_eq!(display[4], buff);
+    assert_eq!(display[5], buff);
+    assert_eq!(display[6], black);
+    assert_eq!(display[7], black);
+
+    // Case 3: Artifacting disabled (should render standard monochrome green-on-black when CSS=false)
+    ARTIFACT_ENABLED.store(false, Ordering::Relaxed);
+    let mut display = [0u16; SCREEN_DIM_X * SCREEN_DIM_Y];
+    vdg.set_dirty();
+    vdg.render(&mut display, false);
+
+    // Bits in 0b01101100:
+    //   0 (black) -> pixel 0
+    //   1 (green) -> pixel 1
+    //   1 (green) -> pixel 2
+    //   0 (black) -> pixel 3
+    //   1 (green) -> pixel 4
+    //   1 (green) -> pixel 5
+    //   0 (black) -> pixel 6
+    //   0 (black) -> pixel 7
+    let green = Color::Green.to_rgb555();
+    assert_eq!(display[0], black);
+    assert_eq!(display[1], green);
+    assert_eq!(display[2], green);
+    assert_eq!(display[3], black);
+    assert_eq!(display[4], green);
+    assert_eq!(display[5], green);
+    assert_eq!(display[6], black);
+    assert_eq!(display[7], black);
+
+    // Restore default configuration
+    ARTIFACT_ENABLED.store(true, Ordering::Relaxed);
+}
+

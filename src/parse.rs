@@ -789,11 +789,10 @@ impl Parser {
             let addr = node.eval(lr, 0, true)?;
             tc.lhs = Some(RegOrAddr::Addr(addr.u16()));
         } else {
-            return Err(syntax_err!(format!(
+            return Err(syntax_err!(
                 "Invalid LHS \"{}\" in test criterion",
                 &tc.lhs_src
-            )
-            .as_str()));
+            ));
         }
         let mut rhs_is_value = false;
         tokens = self.tokenize(&tc.rhs_src)?;

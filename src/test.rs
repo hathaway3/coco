@@ -32,9 +32,9 @@
 //! - `;! label = a` Passes if byte at address _label_ equals value of register A
 //! - `;! b = #'C` Passes if register B holds the value of ascii char 'C' (0x43)
 //!
-use crate::registers;
+use super::*;
+use crate::u8oru16::u8u16;
 use core::fmt;
-use alloc::string::String;
 #[derive(Debug)]
 pub enum RegOrAddr {
     Reg(registers::Name),
