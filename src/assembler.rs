@@ -104,7 +104,7 @@ impl Assembler {
                 let second = parts.next();
                 let remains = parts.collect::<Vec<&str>>().join(" ");
 
-                if line.chars().next().map_or(false, |c| !c.is_whitespace()) {
+                if line.chars().next().is_some_and(|c| !c.is_whitespace()) {
                     // line starts with a label
                     label = first.map(|s| s.trim_end_matches(':').to_string());
                     operation = second.map(|s| s.to_ascii_uppercase());
@@ -116,15 +116,15 @@ impl Assembler {
                 } else {
                     // no label, line starts with whitespace
                     operation = first.map(|s| s.to_ascii_uppercase());
-                    operand = if second.is_none() {
-                        None
-                    } else {
-                        let mut op_plus_remains = second.unwrap().to_string();
+                    operand = if let Some(second) = second {
+                        let mut op_plus_remains = second.to_string();
                         if !remains.is_empty() {
                             op_plus_remains.push(' ');
                             op_plus_remains.push_str(&remains);
                         }
                         Some(op_plus_remains)
+                    } else {
+                        None
                     };
                 }
             }
@@ -139,7 +139,8 @@ impl Assembler {
                     if macros.contains_key(&name) {
                         return Err(syntax_err_line!(
                             src_line_num,
-                            "duplicate definition of macro \"{}\"", &name
+                            "duplicate definition of macro \"{}\"",
+                            &name
                         ));
                     }
                     // create a new Macro object and hold it in the mo Option
@@ -147,7 +148,7 @@ impl Assembler {
                     add_line(
                         &mut prog_lines,
                         src_line_num,
-                        format!("; {}", &line),
+                        format!("; {}", line),
                         None,
                         None,
                         None,
@@ -168,7 +169,7 @@ impl Assembler {
                 add_line(
                     &mut prog_lines,
                     src_line_num,
-                    format!("; {}", &line),
+                    format!("; {}", line),
                     None,
                     None,
                     None,
@@ -183,7 +184,7 @@ impl Assembler {
                 add_line(
                     &mut prog_lines,
                     src_line_num,
-                    format!("; {}", &line),
+                    format!("; {}", line),
                     None,
                     None,
                     None,
@@ -193,12 +194,12 @@ impl Assembler {
             }
             if let Some(m) = operation.as_ref().and_then(|s| macros.get(s)) {
                 // there is a macro to expand on this line
-                if label.is_some() {
+                if let Some(label_str) = label.as_ref() {
                     // there is also a label on this line; preserve it (on its own line) before expanding the macro
                     add_line(
                         &mut prog_lines,
                         src_line_num,
-                        format!("{}:", label.as_ref().unwrap()),
+                        format!("{}:", label_str),
                         label,
                         None,
                         None,
@@ -264,10 +265,7 @@ impl Assembler {
         // we've read through all the supplied source lines
         if let Some(_m) = mo {
             // a macro definition was begun but never ended
-            return Err(syntax_err!(
-                "no end found for macro \"{}\"",
-                _m.name
-            ));
+            return Err(syntax_err!("no end found for macro \"{}\"", _m.name));
         }
         Ok(Program::new(prog_lines))
     }
@@ -321,7 +319,15 @@ impl Assembler {
         #[cfg(not(target_os = "none"))]
         self.post_build(program)?;
         println!("Build complete.");
-        if unsafe { config::ARGS.debug.load(core::sync::atomic::Ordering::Relaxed) } || unsafe { config::ARGS.trace.load(core::sync::atomic::Ordering::Relaxed) } {
+        if unsafe {
+            config::ARGS
+                .debug
+                .load(core::sync::atomic::Ordering::Relaxed)
+        } || unsafe {
+            config::ARGS
+                .trace
+                .load(core::sync::atomic::Ordering::Relaxed)
+        } {
             // program.write_listing(&mut io::stdout())?;
         }
         Ok(())
@@ -398,7 +404,8 @@ impl Assembler {
             Ok(())
         };
         for line in program.lines.iter_mut() {
-            pre_build_one_line(line).map_err(|e| line_err!(line.src_line_num, e.kind, "{}", e.msg))?;
+            pre_build_one_line(line)
+                .map_err(|e| line_err!(line.src_line_num, e.kind, "{}", e.msg))?;
         }
         Ok(())
     }
@@ -496,9 +503,8 @@ impl Assembler {
         }
         // it's not a directive; see if it's an instruction
         // using ok_or_else to avoid executing the format! every time this next line is executed.
-        let desc = instructions::name_to_descriptor(line.get_operation()).ok_or_else(|| {
-            syntax_err!("Invalid operation: \"{}\"", line.get_operation())
-        })?;
+        let desc = instructions::name_to_descriptor(line.get_operation())
+            .ok_or_else(|| syntax_err!("Invalid operation: \"{}\"", line.get_operation()))?;
         let od = if line.operand.is_none() || desc.is_inherent() {
             // the instruction uses only inherent addressing or there is no operand
             OperandDescriptor::new()

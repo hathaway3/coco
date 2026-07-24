@@ -216,7 +216,7 @@ fn test_render_sg4_text_char() {
 /// Verify VDG renders RG6 (PMODE 4) mode with correct NTSC Color Artifacting.
 #[test]
 fn test_render_rg6_artifact_colors() {
-    use crate::vdg::{ARTIFACT_ENABLED, Color};
+    use crate::vdg::{Color, ARTIFACT_ENABLED};
     use core::sync::atomic::Ordering;
 
     let _lock = TEST_LOCK.lock().unwrap();
@@ -309,4 +309,3 @@ fn test_render_rg6_artifact_colors() {
     // Restore default configuration
     ARTIFACT_ENABLED.store(true, Ordering::Relaxed);
 }
-

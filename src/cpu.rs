@@ -97,7 +97,9 @@ impl Core {
             _vdg: vdg,
             pia,
             reg: { Default::default() },
-            acia: acia_addr.map(|a| core::cell::RefCell::new(acia::Acia::new(a).expect("failed to start ACIA"))),
+            acia: acia_addr.map(|a| {
+                core::cell::RefCell::new(acia::Acia::new(a).expect("failed to start ACIA"))
+            }),
             reset_vector: None,
             cart_pending: false,
             in_cwai: false,
@@ -132,7 +134,9 @@ impl Core {
             history: None,
             step_mode: debug::StepMode::Off,
             next_linear_step: 0,
-            trace: config::ARGS.trace.load(core::sync::atomic::Ordering::Relaxed),
+            trace: config::ARGS
+                .trace
+                .load(core::sync::atomic::Ordering::Relaxed),
             hsync_enabled: false,
             vsync_enabled: false,
             vram_dirty: false,
@@ -206,20 +210,18 @@ impl Core {
     }
 
     pub fn load_bytes(&mut self, bytes: &[u8], addr: u16) -> Result<usize, Error> {
-        let mut addr = addr as usize;
+        let start = addr as usize;
         let mut loaded = 0;
-        for &b in bytes {
+        for (i, &b) in bytes.iter().enumerate() {
+            let addr = start + i;
             if addr >= self.raw_ram.len() {
                 break;
             }
             self.raw_ram[addr] = b;
-            addr += 1;
             loaded += 1;
         }
         Ok(loaded)
     }
-
-
 
     pub fn load_program(&mut self, program: &Program) -> Result<u16, Error> {
         let mut extent = 0u16;

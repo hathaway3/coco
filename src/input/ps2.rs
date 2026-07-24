@@ -151,7 +151,7 @@ impl<P: PIOExt, SM: StateMachineIndex> InputDevice for Ps2Keyboard<P, SM> {
 
                 // Parity check (bit 9). Odd parity.
                 let parity_bit = (self.shift_reg >> 9) & 1;
-                if (data.count_ones() + parity_bit as u32) % 2 == 0 {
+                if (data.count_ones() + parity_bit as u32).is_multiple_of(2) {
                     // Parity error, discard frame
                     self.shift_reg = 0xFFFF;
                     continue;

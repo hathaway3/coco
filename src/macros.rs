@@ -1,4 +1,3 @@
-
 #[macro_export]
 macro_rules! verbose_println {
     ($($p:expr),+ $(,)?) => {{}};

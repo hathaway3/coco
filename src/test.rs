@@ -105,7 +105,9 @@ impl TestCriterion {
             }
         };
         let rhs_val = match rhs {
-            AddrOrVal::Addr(addr) => core._read_u8u16(memory::AccessType::Generic, *addr, lhs_size)?,
+            AddrOrVal::Addr(addr) => {
+                core._read_u8u16(memory::AccessType::Generic, *addr, lhs_size)?
+            }
             AddrOrVal::Val(val) => {
                 if lhs_size == 2 && val.size() == 1 {
                     u8u16::new(val.u8(), Some(0))

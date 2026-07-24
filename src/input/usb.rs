@@ -21,11 +21,13 @@ pub struct UsbKeyboard {
 impl UsbKeyboard {
     pub fn new(usb_bus: &'static UsbBusAllocator<UsbBus>) -> Self {
         let serial = SerialPort::new(usb_bus);
-        
-        let descriptors = [usb_device::device::StringDescriptors::new(usb_device::LangID::EN)
-            .manufacturer("Antigravity")
-            .product("CoCo Keyboard Bridge")
-            .serial_number("COCO1")];
+
+        let descriptors = [
+            usb_device::device::StringDescriptors::new(usb_device::LangID::EN)
+                .manufacturer("Antigravity")
+                .product("CoCo Keyboard Bridge")
+                .serial_number("COCO1"),
+        ];
 
         let usb_dev = UsbDeviceBuilder::new(usb_bus, UsbVidPid(0x16c0, 0x27dd))
             .strings(&descriptors)
@@ -53,11 +55,16 @@ impl UsbKeyboard {
 }
 
 #[cfg(not(target_os = "none"))]
+impl Default for UsbKeyboard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(not(target_os = "none"))]
 impl UsbKeyboard {
     pub fn new() -> Self {
-        Self {
-            pressed_key: None,
-        }
+        Self { pressed_key: None }
     }
 }
 

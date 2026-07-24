@@ -12,12 +12,12 @@ mod embedded {
     use core::ptr::addr_of_mut;
     use defmt_rtt as _;
     use embedded_alloc::Heap;
+    use embedded_hal::digital::InputPin;
+    use hal::clocks::ClockSource;
+    use hal::fugit::RateExtU32;
     use hal::pac;
     use panic_probe as _;
     use rp235x_hal as hal;
-    use embedded_hal::digital::InputPin;
-    use hal::fugit::RateExtU32;
-    use hal::clocks::ClockSource;
 
     // Import pico-dvi-rs library
     use pico_dvi_rs::dvi; // Module for setup functions
@@ -51,7 +51,7 @@ mod embedded {
     use hal::pio::PIOExt;
 
     // SD Card Support
-    use embedded_sdmmc::{SdCard, VolumeManager, VolumeIdx, Mode, TimeSource, Timestamp};
+    use embedded_sdmmc::{Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
 
     // Custom SpiDevice wrapper for embedded-hal 1.0 SPI
     struct SimpleSpiDevice<SPI, CS> {
@@ -71,7 +71,10 @@ mod embedded {
         SPI: embedded_hal::spi::SpiBus,
         CS: embedded_hal::digital::OutputPin,
     {
-        fn transaction(&mut self, operations: &mut [embedded_hal::spi::Operation<'_, u8>]) -> Result<(), Self::Error> {
+        fn transaction(
+            &mut self,
+            operations: &mut [embedded_hal::spi::Operation<'_, u8>],
+        ) -> Result<(), Self::Error> {
             let _ = self.cs.set_low();
             for op in operations {
                 match op {
@@ -88,7 +91,7 @@ mod embedded {
                         self.spi.transfer_in_place(buffer)?;
                     }
                     embedded_hal::spi::Operation::DelayNs(ns) => {
-                        cortex_m::asm::delay((*ns / 4) as u32);
+                        cortex_m::asm::delay(*ns / 4);
                     }
                 }
             }
@@ -104,7 +107,7 @@ mod embedded {
 
     impl<'a> embedded_hal::delay::DelayNs for TimerDelay<'a> {
         fn delay_ns(&mut self, ns: u32) {
-            let us = (ns + 999) / 1000;
+            let us = ns.div_ceil(1000);
             let start = self.timer.get_counter().ticks();
             while (self.timer.get_counter().ticks() - start) < us as u64 {
                 core::hint::spin_loop();
@@ -117,9 +120,9 @@ mod embedded {
     impl TimeSource for DummyTimeSource {
         fn get_timestamp(&self) -> Timestamp {
             Timestamp {
-                year_since_1970: 56, // 2026
+                year_since_1970: 56,   // 2026
                 zero_indexed_month: 6, // July (0-indexed is 6)
-                zero_indexed_day: 19, // 20th (0-indexed is 19)
+                zero_indexed_day: 19,  // 20th (0-indexed is 19)
                 hours: 1,
                 minutes: 0,
                 seconds: 0,
@@ -255,7 +258,8 @@ mod embedded {
         let mut ps2_kb = Ps2Keyboard::new(&mut pio0, sm0, ps2_data.id().num, ps2_clk.id().num);
 
         // Initialize USB Keyboard Driver (CDC Serial ACM)
-        static mut USB_BUS: Option<usb_device::bus::UsbBusAllocator<rp235x_hal::usb::UsbBus>> = None;
+        static mut USB_BUS: Option<usb_device::bus::UsbBusAllocator<rp235x_hal::usb::UsbBus>> =
+            None;
         let usb_bus = usb_device::bus::UsbBusAllocator::new(rp235x_hal::usb::UsbBus::new(
             pac.USB,
             pac.USB_DPRAM,
@@ -297,7 +301,9 @@ mod embedded {
             let spi_sck = pins.gpio6.into_function::<hal::gpio::FunctionSpi>();
             let spi_mosi = pins.gpio7.into_function::<hal::gpio::FunctionSpi>();
             let spi_miso = pins.gpio4.into_function::<hal::gpio::FunctionSpi>();
-            let spi_cs = pins.gpio5.into_push_pull_output_in_state(hal::gpio::PinState::High);
+            let spi_cs = pins
+                .gpio5
+                .into_push_pull_output_in_state(hal::gpio::PinState::High);
 
             let spi = hal::Spi::<_, _, _, 8>::new(pac.SPI0, (spi_mosi, spi_miso, spi_sck));
             let spi = spi.init(
@@ -331,19 +337,33 @@ mod embedded {
                                             match file.read(&mut read_buf) {
                                                 Ok(0) => break,
                                                 Ok(n) => {
-                                                    if core.load_bytes(&read_buf[0..n], target_addr + offset).is_err() {
+                                                    if core
+                                                        .load_bytes(
+                                                            &read_buf[0..n],
+                                                            target_addr + offset,
+                                                        )
+                                                        .is_err()
+                                                    {
                                                         defmt::error!("Failed to write bytes to emulated memory at {:x}", target_addr + offset);
                                                         return false;
                                                     }
                                                     offset += n as u16;
                                                 }
                                                 Err(e) => {
-                                                    defmt::error!("Error reading file {}: {:?}", filename, defmt::Debug2Format(&e));
+                                                    defmt::error!(
+                                                        "Error reading file {}: {:?}",
+                                                        filename,
+                                                        defmt::Debug2Format(&e)
+                                                    );
                                                     return false;
                                                 }
                                             }
                                         }
-                                        defmt::info!("Successfully loaded {} ({} bytes)", filename, offset);
+                                        defmt::info!(
+                                            "Successfully loaded {} ({} bytes)",
+                                            filename,
+                                            offset
+                                        );
                                         true
                                     }
                                     Err(_) => {
@@ -358,12 +378,18 @@ mod embedded {
                             loaded_cart = read_rom_file("CART.ROM", 0xC000);
                         }
                         Err(e) => {
-                            defmt::error!("Failed to open SD Card Root Directory: {:?}", defmt::Debug2Format(&e));
+                            defmt::error!(
+                                "Failed to open SD Card Root Directory: {:?}",
+                                defmt::Debug2Format(&e)
+                            );
                         }
                     }
                 }
                 Err(e) => {
-                    defmt::info!("SD Card not found or failed to mount: {:?}", defmt::Debug2Format(&e));
+                    defmt::info!(
+                        "SD Card not found or failed to mount: {:?}",
+                        defmt::Debug2Format(&e)
+                    );
                 }
             };
         }

@@ -22,7 +22,7 @@ pub fn init() {
 // Note: no affordance is made for multi-byte key codes
 pub fn get_keyboard_input(block: bool, drain: bool) -> Option<u8> {
     const KEY_EVENT: u16 = 1;
-    let ir = &mut [INPUT_RECORD::default();1];
+    let ir = &mut [INPUT_RECORD::default(); 1];
     let mut count = 0u32;
     let mut ascii = 0u8;
     unsafe {
@@ -47,7 +47,11 @@ pub fn get_keyboard_input(block: bool, drain: bool) -> Option<u8> {
             }
         }
     }
-    if ascii != 0 { Some(ascii) } else { None }
+    if ascii != 0 {
+        Some(ascii)
+    } else {
+        None
+    }
 }
 
 pub fn flush_keyboard_input() {

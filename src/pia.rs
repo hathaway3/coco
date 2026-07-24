@@ -177,25 +177,13 @@ impl Chip0 {
 }
 
 /// Internal chip state for PIA 1 (Video Mode, Sound, Cartridge)
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct Chip1 {
     ab: [PiaSide; 2],
     sound_enabled: bool,
     dac_sel_a: bool,
     dac_sel_b: bool,
     last_bit_sound: bool,
-}
-
-impl Default for Chip1 {
-    fn default() -> Self {
-        Self {
-            ab: [PiaSide::default(), PiaSide::default()],
-            sound_enabled: false,
-            dac_sel_a: false,
-            dac_sel_b: false,
-            last_bit_sound: false,
-        }
-    }
 }
 
 /// Unified PIA implementation for the CoCo
@@ -221,7 +209,9 @@ impl PiaPair {
                 let dac_val = self.chip1.ab[0].read_output() >> 2;
                 self.chip0.read((addr - 0xff00) as usize, dac_val)
             }
-            0xff20..=0xff3f => self.chip1.ab[((addr - 0xff20) >> 1) as usize & 1].read((addr - 0xff20) as usize),
+            0xff20..=0xff3f => {
+                self.chip1.ab[((addr - 0xff20) >> 1) as usize & 1].read((addr - 0xff20) as usize)
+            }
             _ => 0,
         }
     }
@@ -241,7 +231,10 @@ impl PiaPair {
                 self.chip1.ab[(i >> 1) & 1].write(i, data);
 
                 match i {
-                    0 if self.chip1.sound_enabled && !self.chip1.dac_sel_a && !self.chip1.dac_sel_b => {
+                    0 if self.chip1.sound_enabled
+                        && !self.chip1.dac_sel_a
+                        && !self.chip1.dac_sel_b =>
+                    {
                         let val = (self.chip1.ab[0].read_output() >> 2) << 2;
                         unsafe {
                             if let Some(cb) = crate::AUDIO_CALLBACK {
@@ -325,18 +318,52 @@ impl PiaPair {
 
     fn ascii_to_matrix(&self, c: u8) -> Option<(usize, usize)> {
         match c.to_ascii_uppercase() {
-            b'@' => Some((0, 0)), b'A' => Some((0, 1)), b'B' => Some((0, 2)), b'C' => Some((0, 3)),
-            b'D' => Some((0, 4)), b'E' => Some((0, 5)), b'F' => Some((0, 6)), b'G' => Some((0, 7)),
-            b'H' => Some((1, 0)), b'I' => Some((1, 1)), b'J' => Some((1, 2)), b'K' => Some((1, 3)),
-            b'L' => Some((1, 4)), b'M' => Some((1, 5)), b'N' => Some((1, 6)), b'O' => Some((1, 7)),
-            b'P' => Some((2, 0)), b'Q' => Some((2, 1)), b'R' => Some((2, 2)), b'S' => Some((2, 3)),
-            b'T' => Some((2, 4)), b'U' => Some((2, 5)), b'V' => Some((2, 6)), b'W' => Some((2, 7)),
-            b'X' => Some((3, 0)), b'Y' => Some((3, 1)), b'Z' => Some((3, 2)), b' ' => Some((3, 7)),
-            b'0' => Some((4, 0)), b'1' => Some((4, 1)), b'2' => Some((4, 2)), b'3' => Some((4, 3)),
-            b'4' => Some((4, 4)), b'5' => Some((4, 5)), b'6' => Some((4, 6)), b'7' => Some((4, 7)),
-            b'8' => Some((5, 0)), b'9' => Some((5, 1)), b':' => Some((5, 2)), b';' => Some((5, 3)),
-            b',' => Some((5, 4)), b'-' => Some((5, 5)), b'.' => Some((5, 6)), b'/' => Some((5, 7)),
-            b'\r' | b'\n' => Some((6, 0)), 0x08 => Some((3, 5)),
+            b'@' => Some((0, 0)),
+            b'A' => Some((0, 1)),
+            b'B' => Some((0, 2)),
+            b'C' => Some((0, 3)),
+            b'D' => Some((0, 4)),
+            b'E' => Some((0, 5)),
+            b'F' => Some((0, 6)),
+            b'G' => Some((0, 7)),
+            b'H' => Some((1, 0)),
+            b'I' => Some((1, 1)),
+            b'J' => Some((1, 2)),
+            b'K' => Some((1, 3)),
+            b'L' => Some((1, 4)),
+            b'M' => Some((1, 5)),
+            b'N' => Some((1, 6)),
+            b'O' => Some((1, 7)),
+            b'P' => Some((2, 0)),
+            b'Q' => Some((2, 1)),
+            b'R' => Some((2, 2)),
+            b'S' => Some((2, 3)),
+            b'T' => Some((2, 4)),
+            b'U' => Some((2, 5)),
+            b'V' => Some((2, 6)),
+            b'W' => Some((2, 7)),
+            b'X' => Some((3, 0)),
+            b'Y' => Some((3, 1)),
+            b'Z' => Some((3, 2)),
+            b' ' => Some((3, 7)),
+            b'0' => Some((4, 0)),
+            b'1' => Some((4, 1)),
+            b'2' => Some((4, 2)),
+            b'3' => Some((4, 3)),
+            b'4' => Some((4, 4)),
+            b'5' => Some((4, 5)),
+            b'6' => Some((4, 6)),
+            b'7' => Some((4, 7)),
+            b'8' => Some((5, 0)),
+            b'9' => Some((5, 1)),
+            b':' => Some((5, 2)),
+            b';' => Some((5, 3)),
+            b',' => Some((5, 4)),
+            b'-' => Some((5, 5)),
+            b'.' => Some((5, 6)),
+            b'/' => Some((5, 7)),
+            b'\r' | b'\n' => Some((6, 0)),
+            0x08 => Some((3, 5)),
             _ => None,
         }
     }

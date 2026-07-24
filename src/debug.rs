@@ -312,10 +312,8 @@ impl Core {
     fn parse_address(&self, addr_sym: &str) -> Option<u16> {
         if let Some(name) = addr_sym.strip_prefix('?') {
             self.symbol_by_name(name)
-        } else if let Ok(addr) = u16::from_str_radix(addr_sym, 16) {
-            Some(addr)
         } else {
-            None
+            u16::from_str_radix(addr_sym, 16).ok()
         }
     }
     fn parse_number(&self, str_num: &str) -> Option<u8u16> {
@@ -378,7 +376,13 @@ impl Core {
             return true;
         }
         // if break_start is true then always break into debugger when the instruction at program_start is about to be executed
-        if self.program_start == pc && unsafe { config::ARGS.break_start.load(core::sync::atomic::Ordering::Relaxed) } {
+        if self.program_start == pc
+            && unsafe {
+                config::ARGS
+                    .break_start
+                    .load(core::sync::atomic::Ordering::Relaxed)
+            }
+        {
             return true;
         }
         // if we're in step mode then we wait for a keypress before executing another instruction

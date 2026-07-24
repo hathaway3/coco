@@ -1,4 +1,3 @@
-
 /// Simple interface for reading and writing the Synchronous Address Multiplexer
 /// Sam Control Register bit definitions:
 /// Bits  | Usage
@@ -9,15 +8,9 @@
 /// 13-14 | Memory Size
 /// 15    | Map Type (ROM+RAM or RAM-only; coco uses ROM+RAM)
 ///
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Sam {
     config: u16,
-}
-
-impl Default for Sam {
-    fn default() -> Self {
-        Sam { config: 0 }
-    }
 }
 
 impl Sam {

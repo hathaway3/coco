@@ -116,6 +116,12 @@ pub struct HexRecordCollection {
     eof: bool,
 }
 
+impl Default for HexRecordCollection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HexRecordCollection {
     pub fn new() -> Self {
         HexRecordCollection {

@@ -13,6 +13,8 @@ pub mod acia;
 pub mod assembler;
 pub mod config;
 pub mod cpu;
+#[cfg(test)]
+pub mod cpu_test;
 pub mod debug;
 pub mod devmgr;
 pub mod error;
@@ -23,8 +25,6 @@ pub mod memory;
 pub mod obj;
 pub mod parse;
 pub mod pia;
-#[cfg(test)]
-pub mod cpu_test;
 pub mod program;
 pub mod registers;
 pub mod runtime;
@@ -69,9 +69,19 @@ pub const SCREEN_DIM_X: usize = 256;
 pub const SCREEN_DIM_Y: usize = 192;
 pub struct RamDiskWrapper(core::cell::UnsafeCell<[u8; 0x10000]>);
 unsafe impl Sync for RamDiskWrapper {}
+impl Default for RamDiskWrapper {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RamDiskWrapper {
-    pub const fn new() -> Self { Self(core::cell::UnsafeCell::new([0u8; 0x10000])) }
-    pub fn as_mut_ptr(&self) -> *mut [u8; 0x10000] { self.0.get() }
+    pub const fn new() -> Self {
+        Self(core::cell::UnsafeCell::new([0u8; 0x10000]))
+    }
+    pub fn as_mut_ptr(&self) -> *mut [u8; 0x10000] {
+        self.0.get()
+    }
 }
 pub static RAM_DISK: RamDiskWrapper = RamDiskWrapper::new();
 pub static mut DISPLAY_BUFFER: [u16; SCREEN_DIM_X * SCREEN_DIM_Y] =

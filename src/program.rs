@@ -137,7 +137,7 @@ impl ProgramLine {
 impl fmt::Display for ProgramLine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.is_inert() {
-            write!(f, "{}", &self.src)
+            write!(f, "{}", self.src)
         } else {
             write!(
                 f,
@@ -180,6 +180,12 @@ impl LabelResolver for ProgramLabels {
         self.get_value(label)
     }
 }
+impl Default for ProgramLabels {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ProgramLabels {
     pub fn new() -> ProgramLabels {
         ProgramLabels { map: Map::new() }
@@ -189,7 +195,7 @@ impl ProgramLabels {
             println!("No symbols.")
         } else {
             let mut labels: Vec<_> = self.map.values().collect();
-            labels.sort_by(|&l1, &l2| l1.line.cmp(&l2.line));
+            labels.sort_by_key(|&l1| l1.line);
             println!("{} symbols defined/referenced:", self.map.len());
             println!(
                 blue!("{:4} {:4} {:10} {:4}"),
@@ -322,6 +328,12 @@ pub struct ProgramSegment {}
 pub struct ProgramSegments {
     pub map: Map<u16, ProgramSegment>,
 }
+impl Default for ProgramSegments {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ProgramSegments {
     pub fn new() -> Self {
         let mut segs = ProgramSegments { map: Map::new() };
@@ -333,10 +345,7 @@ impl ProgramSegments {
         if self.map.insert(addr, ProgramSegment {}).is_some() && addr != 0u16 {
             // we allow duplicate segments at address 0 (because of our default segment there)
             // but flag other duplicates as errors
-            return Err(syntax_err!(
-                "duplicate segment at address {:04x}",
-                addr
-            ));
+            return Err(syntax_err!("duplicate segment at address {:04x}", addr));
         }
         Ok(())
     }

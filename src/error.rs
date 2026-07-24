@@ -54,4 +54,3 @@ impl fmt::Display for Error {
         res
     }
 }
-

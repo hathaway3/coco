@@ -34,9 +34,7 @@ impl Core {
     pub fn force_reset_vector(&mut self, addr: u16) -> Result<(), Error> {
         self._write_u8u16(memory::AccessType::System, 0xfffe, u8u16::u16(addr))
     }
-    /// Displays current perf information to stdout
-
-    /// Starts executing instructions at the current program counter.  
+    /// Starts executing instructions at the current program counter.
     /// Does not set or read any registers before attempting to execute.  
     /// Will attempt to execute until an EXIT psuedo-instruction or an
     /// unhandled exception is encountered.
@@ -63,7 +61,6 @@ impl Core {
     /// Helper function for exec.  
     /// Wraps calls to exec_next and adds debug checks and interrupt processing.
     pub fn exec_one(&mut self) -> Result<(), Error> {
-
         if config::debug() && self.pre_instruction_debug_check(self.reg.pc) {
             self.debug_cli()?;
         }
@@ -107,7 +104,7 @@ impl Core {
 
         if self.clock_cycles - self.hsync_prev >= HSYNC_PERIOD_CYCLES {
             self.hsync_prev = self.clock_cycles;
-            
+
             let vsync_elapsed = self.clock_cycles - self.vsync_prev >= VSYNC_PERIOD_CYCLES;
             if vsync_elapsed {
                 self.vsync_prev = self.clock_cycles;
@@ -235,7 +232,6 @@ impl Core {
     /// If list_mode.is_some() then the instruction is not evaluated and Outcome reflects
     /// the state prior to the instruction.
     pub fn exec_next(&mut self, _commit: bool) -> Result<instructions::Outcome, Error> {
-
         let mut inst = instructions::Instance::new(self.reg.pc, None);
         let mut op16: u16 = 0; // 16-bit representation of the opcode
 
@@ -272,16 +268,12 @@ impl Core {
         self.reg.pc = self.checked_pc_add(self.reg.pc, inst.size, &inst)?;
         let mut o = instructions::Outcome::new(inst);
 
-
         // evaluate the instruction if we're not in list mode
         if self.list_mode.is_none() {
             (o.inst.flavor.desc.eval)(self, &mut o)?;
         }
 
-
         // if caller wants to commit the changes and we're not in list mode then commit now
-
-
 
         self.instruction_count += 1;
         self.clock_cycles += o.inst.flavor.detail.clk as u64;
@@ -433,7 +425,8 @@ impl Core {
                         }
                         inst.ea = ir_val;
                         let (r, _) = (ir_val).overflowing_add(1);
-                        ir_val = r; self.reg.set_register(reg_name, u8u16::u16(ir_val));
+                        ir_val = r;
+                        self.reg.set_register(reg_name, u8u16::u16(ir_val));
                         if config::help_humans() {
                             inst.operand = Some(format!(",{}+", ir_str));
                         }
@@ -442,7 +435,8 @@ impl Core {
                         // ,R++
                         inst.ea = ir_val;
                         let (r, _) = (ir_val).overflowing_add(2);
-                        ir_val = r; self.reg.set_register(reg_name, u8u16::u16(ir_val));
+                        ir_val = r;
+                        self.reg.set_register(reg_name, u8u16::u16(ir_val));
                         if config::help_humans() {
                             inst.operand = Some(format!(",{}++", ir_str));
                         }
@@ -461,7 +455,8 @@ impl Core {
                             ));
                         }
                         let (r, _) = (ir_val).overflowing_sub(1);
-                        ir_val = r; self.reg.set_register(reg_name, u8u16::u16(ir_val));
+                        ir_val = r;
+                        self.reg.set_register(reg_name, u8u16::u16(ir_val));
                         inst.ea = ir_val;
                         if config::help_humans() {
                             inst.operand = Some(format!(",-{}", ir_str));
@@ -470,7 +465,8 @@ impl Core {
                     0b10000011 => {
                         // ,--R
                         let (r, _) = (ir_val).overflowing_sub(2);
-                        ir_val = r; self.reg.set_register(reg_name, u8u16::u16(ir_val));
+                        ir_val = r;
+                        self.reg.set_register(reg_name, u8u16::u16(ir_val));
                         inst.ea = ir_val;
                         if config::help_humans() {
                             inst.operand = Some(format!(",--{}", ir_str));

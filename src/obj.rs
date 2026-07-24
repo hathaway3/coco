@@ -135,9 +135,10 @@ impl Instruction {
                 // if it doesn't work then we'll have to change at build time
                 } else if !dp_dirty
                     && !od.force_mode
-                    && od.value.as_ref().map_or(false, |v| {
-                        v.eval(lr, addr, false).map_or(false, |u| u.u16() < 0x100)
-                    })
+                    && od
+                        .value
+                        .as_ref()
+                        .is_some_and(|v| v.eval(lr, addr, false).is_ok_and(|u| u.u16() < 0x100))
                 {
                     trying_direct = true;
                     AddressingMode::Direct
@@ -196,10 +197,7 @@ impl Instruction {
                     "B" => 0b10000101,
                     "D" => 0b10001011,
                     _ => {
-                        return Err(syntax_err!(
-                            "register \"{}\" invalid as offset",
-                            regs[0]
-                        ));
+                        return Err(syntax_err!("register \"{}\" invalid as offset", regs[0]));
                     }
                 };
                 self._add_index_register_to_postbyte(&mut post_byte, regs[1].as_str())?;
@@ -351,7 +349,7 @@ impl Instruction {
 }
 impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:width$}", &self.flavor, width = f.width().unwrap_or(0))
+        write!(f, "{:width$}", self.flavor, width = f.width().unwrap_or(0))
     }
 }
 impl ObjectProducer for Instruction {

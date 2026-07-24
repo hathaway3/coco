@@ -1,8 +1,8 @@
 use crate::sam::Sam;
-use spin::Mutex;
-use alloc::sync::Arc;
 use crate::vdg::{Vdg, VdgMode};
 use crate::DISPLAY_BUFFER;
+use alloc::sync::Arc;
+use spin::Mutex;
 
 // DeviceManager should be instantiated on the main thread and then clones of its
 // member fields can be sent to other threads. DeviceManger methods must only be
@@ -29,7 +29,7 @@ impl DeviceManager {
         let vdg = Arc::new(Mutex::new(Vdg::with_vram_offset(vram_offset)));
         let pia = Arc::new(Mutex::new(crate::pia::PiaPair::new()));
         DeviceManager {
-            display: unsafe { &mut *(&raw mut DISPLAY_BUFFER) },
+            display: unsafe { &mut *core::ptr::addr_of_mut!(DISPLAY_BUFFER) },
             sam: Arc::new(Mutex::new(Sam::new())),
             vdg,
             pia,
@@ -69,7 +69,7 @@ impl DeviceManager {
             vdg.set_mode(mode);
             vdg.set_vram_offset(vram_offset);
             // convert contents of VRAM to pixels for display
-            vdg.render(&mut self.display, css);
+            vdg.render(self.display, css);
         }
     }
 }

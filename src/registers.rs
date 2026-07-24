@@ -41,13 +41,13 @@ macro_rules! sign_bit_16 {
 }
 macro_rules! signed_sub_overflow {
     ($a:ident,$b:ident, $t:ty) => {{
-        let (_, _o) = ($a as $t).overflowing_sub(($b as $t));
+        let (_, _o) = ($a as $t).overflowing_sub($b as $t);
         _o
     }};
 }
 macro_rules! signed_add_overflow {
     ($a:ident,$b:ident, $t:ty) => {{
-        let (_, _o) = ($a as $t).overflowing_add(($b as $t));
+        let (_, _o) = ($a as $t).overflowing_add($b as $t);
         _o
     }};
 }
@@ -322,7 +322,7 @@ impl Name {
     pub fn to_str(self) -> &'static str {
         REG_NAMES[self as usize]
     }
-    pub fn from_str(s: &str) -> Self {
+    pub fn from_reg_str(s: &str) -> Self {
         match s.to_ascii_uppercase().as_str() {
             "A" => Name::A,
             "B" => Name::B,

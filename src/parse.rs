@@ -236,22 +236,17 @@ impl ValueNode {
 impl Display for ValueNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let r;
-        if self.left.is_some() && self.right.is_some() {
+        if let (Some(left), Some(right)) = (self.left.as_ref(), self.right.as_ref()) {
             r = write!(
                 f,
                 "({}{} {} {})",
                 if self.negate { "-" } else { "" },
-                self.left.as_ref().unwrap(),
+                left,
                 self.token.clean(),
-                self.right.as_ref().unwrap()
+                right
             );
-        } else if self.left.is_some() {
-            r = write!(
-                f,
-                "ERROR? {} LEFT: {} ",
-                self.token.clean(),
-                self.left.as_ref().unwrap()
-            );
+        } else if let Some(left) = self.left.as_ref() {
+            r = write!(f, "ERROR? {} LEFT: {} ", self.token.clean(), left);
         } else if self.negate {
             r = write!(f, "-{}", self.token.clean());
         } else {
@@ -282,6 +277,12 @@ pub struct OperandDescriptor {
     pub regs: Option<Vec<String>>,
     pub incdec: Option<IncDecType>,
 }
+impl Default for OperandDescriptor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OperandDescriptor {
     pub fn new() -> Self {
         OperandDescriptor {
@@ -297,11 +298,11 @@ impl OperandDescriptor {
 impl Display for OperandDescriptor {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "<{:?}> ", self.mode,)?;
-        let value = if self.value.is_some() {
-            format!("{}", self.value.as_ref().unwrap())
-        } else {
-            "".to_string()
-        };
+        let value = self
+            .value
+            .as_ref()
+            .map(|v| format!("{}", v))
+            .unwrap_or_default();
         if self.indirect {
             write!(f, "[")?;
         }
@@ -349,15 +350,21 @@ impl Display for OperandDescriptor {
 }
 /// The container for parsing methods.
 pub struct Parser {}
+impl Default for Parser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Parser {
     pub fn new() -> Self {
         Parser {}
     }
     fn is_register(&self, s: &str) -> bool {
-        match s.to_uppercase().as_str() {
-            "A" | "B" | "CC" | "DP" | "D" | "PC" | "PCR" | "S" | "U" | "X" | "Y" => true,
-            _ => false,
-        }
+        matches!(
+            s.to_uppercase().as_str(),
+            "A" | "B" | "CC" | "DP" | "D" | "PC" | "PCR" | "S" | "U" | "X" | "Y"
+        )
     }
     /// Parses an operand and returns an OperandDescriptor on success.
     ///
@@ -793,7 +800,7 @@ impl Parser {
         {
             // consume the register token
             let reg = token_iter.next().unwrap();
-            tc.lhs = Some(RegOrAddr::Reg(registers::Name::from_str(&reg.clean())));
+            tc.lhs = Some(RegOrAddr::Reg(registers::Name::from_reg_str(&reg.clean())));
         } else if let Ok(node) = self.parse_valexpr(&mut token_iter) {
             // value token(s) consumed by parse_valexpr; now evaluate and store the addr
             // Note: test criteria cannot use location reference (obviously, right?)

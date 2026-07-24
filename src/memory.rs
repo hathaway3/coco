@@ -1,9 +1,7 @@
-
+use crate::config;
 use crate::cpu::Core;
 use crate::error::Error;
 use crate::u8oru16::u8u16;
-use crate::config;
-
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 
@@ -40,12 +38,8 @@ impl Core {
                     let mut pia = self.pia.lock();
                     pia.read(addr)
                 }
-                0xffc0..=0xffdf => {
-                    0u8
-                }
-                0xffe0..=0xffff => {
-                    self.raw_ram[(addr - 0x4000) as usize]
-                }
+                0xffc0..=0xffdf => 0u8,
+                0xffe0..=0xffff => self.raw_ram[(addr - 0x4000) as usize],
                 _ => {
                     warn!("Read at unimplemented address {:04x}", addr);
                     0

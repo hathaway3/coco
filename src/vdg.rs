@@ -290,7 +290,10 @@ impl Vdg {
     // Renders the contents of VRAM to the provided buffer where each pixel is defined by a u16 formatted as RGB565
     // Returns true if any changes were made to the buffer.
     pub fn render(&mut self, display: &mut [u16], css: bool) -> bool {
-        assert!(display.len() >= SCREEN_DIM_X * SCREEN_DIM_Y, "VDG render display buffer too small");
+        assert!(
+            display.len() >= SCREEN_DIM_X * SCREEN_DIM_Y,
+            "VDG render display buffer too small"
+        );
         if !self.dirty && !ALWAYS_RENDER {
             return false;
         }
@@ -357,8 +360,20 @@ impl Vdg {
                             let color = match (high, low) {
                                 (false, false) => Color::Black,
                                 (true, true) => Color::Buff,
-                                (false, true) => if css { Color::Red } else { Color::Cyan },
-                                (true, false) => if css { Color::Cyan } else { Color::Red },
+                                (false, true) => {
+                                    if css {
+                                        Color::Red
+                                    } else {
+                                        Color::Cyan
+                                    }
+                                }
+                                (true, false) => {
+                                    if css {
+                                        Color::Cyan
+                                    } else {
+                                        Color::Red
+                                    }
+                                }
                             };
                             let rgb = color.to_rgb555();
                             display[dst_index] = rgb;

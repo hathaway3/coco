@@ -44,7 +44,10 @@ pub fn init() {
                 });
             }
         }
-        InitData { flavor_table, desc_by_name }
+        InitData {
+            flavor_table,
+            desc_by_name,
+        }
     });
 }
 
@@ -169,8 +172,8 @@ pub mod TEPostByte {
         if !is_valid(pb) {
             return None;
         }
-        let r1 = registers::Name::from_str(nibble_str(pb >> 4));
-        let r2 = registers::Name::from_str(nibble_str(pb & 0x0f));
+        let r1 = registers::Name::from_reg_str(nibble_str(pb >> 4));
+        let r2 = registers::Name::from_reg_str(nibble_str(pb & 0x0f));
         if r1 == registers::Name::Z || r2 == registers::Name::Z {
             None
         } else {
@@ -209,13 +212,12 @@ pub mod PPPostByte {
     pub fn make(regs: &Vec<String>) -> Option<u8> {
         let mut pb = 0u8;
         for reg in regs {
-            if let Some(f) = from_str(reg.as_str()) {
+            {
+                let f = from_str(reg.as_str())?;
                 if (pb & f) != 0 {
                     return None;
                 }
                 pb |= f;
-            } else {
-                return None;
             }
         }
         Some(pb)
