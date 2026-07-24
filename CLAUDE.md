@@ -24,7 +24,7 @@ cargo run --release
 ./setup_mac_linux.sh         # Windows: setup_windows.bat
 
 # Host-side tests — must override the default embedded target
-cargo test --target aarch64-apple-darwin              # use your host triple
+cargo test --target aarch64-apple-darwin              # use your host triple (rustc -vV | grep host)
 cargo test --target aarch64-apple-darwin <test_name>  # single test
 
 # Lint/format (expected to pass per .agent rules)
