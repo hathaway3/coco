@@ -182,7 +182,6 @@ impl ValueNode {
     ) -> Result<u8u16, Error> {
         let lhs = left.eval(lr, addr, signed)?;
         let rhs = right.eval(lr, addr, signed)?;
-        // TODO: warn about overflow in these operations
         match self.token.ttype {
             TokenType::Add => {
                 let (u, f) = lhs.u16().overflowing_add(rhs.u16());
@@ -208,8 +207,20 @@ impl ValueNode {
                     Ok(u8u16::from_u16_shrink(u))
                 }
             }
-            TokenType::Div => Ok(lhs.div(rhs)),
-            TokenType::Mod => Ok(lhs.modulo(rhs)),
+            TokenType::Div => {
+                if rhs.u16() == 0 {
+                    Err(syntax_err!("division by zero"))
+                } else {
+                    Ok(lhs.div(rhs))
+                }
+            }
+            TokenType::Mod => {
+                if rhs.u16() == 0 {
+                    Err(syntax_err!("modulo by zero"))
+                } else {
+                    Ok(lhs.modulo(rhs))
+                }
+            }
             TokenType::Pow => {
                 let (u, f) = lhs.u16().overflowing_pow(rhs.u16() as u32);
                 if f {

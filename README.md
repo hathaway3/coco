@@ -66,21 +66,13 @@ cargo run --release --target thumbv8m.main-none-eabihf
 
 ## Adding ROMs to RP2350 Build
 
-Currently, ROM loading on the embedded target is handled via `include_bytes!` at compile time, or hardcoded dummy data for testing.
+ROMs are loaded at boot from an SD card over SPI0 (SCK: GPIO 6, MOSI: GPIO 7, MISO: GPIO 4, CS: GPIO 5). Place the following files in the root directory of a FAT-formatted SD card:
 
-To add a real CoCo boot ROM:
-1. Place your `EXTENDED.ROM` or `COLOR.ROM` file in the project root.
-2. Modify `src/pico.rs` to load it:
-   ```rust
-   // inside src/pico.rs:
-   let rom_data = include_bytes!("../EXTENDED.ROM");
-   core.load_bytes(rom_data, 0x8000).unwrap(); // Adjust address as needed (A000, 8000, etc)
-   // core.force_reset_vector(0xA000).unwrap();
-   ```
-3. Rebuild the firmware.
+- `COLOR.ROM` — loaded at `0xA000` (Color BASIC)
+- `EXTENDED.ROM` — loaded at `0x8000` (Extended Color BASIC)
+- `CART.ROM` — loaded at `0xC000` (cartridge)
 
-> [!IMPORTANT]
-> SD Card support for dynamic ROM loading is coming soon.
+At startup the firmware mounts the card, loads whichever of these files are present, and resets into the loaded ROM. If no SD card is found or `COLOR.ROM` is missing, the firmware falls back to a placeholder test ROM so the device still boots.
 
 ## Peripherals & Hardware Configuration
 

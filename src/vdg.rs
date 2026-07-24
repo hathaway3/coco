@@ -295,7 +295,6 @@ impl Vdg {
             return false;
         }
         self.dirty = false;
-        // TODO SAM V1/V2
         let ram_ptr = RAM_DISK.as_mut_ptr();
         match self.mode {
             SG4 => {
