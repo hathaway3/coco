@@ -24,11 +24,12 @@ cargo run --release
 ./setup_mac_linux.sh         # Windows: setup_windows.bat
 
 # Host-side tests — must override the default embedded target
-cargo test --target aarch64-apple-darwin              # use your host triple (rustc -vV | grep host)
-cargo test --target aarch64-apple-darwin <test_name>  # single test
+cargo test --target $(rustc -vV | sed -n 's/^host: //p')            # all tests
+cargo test --target $(rustc -vV | sed -n 's/^host: //p') <test_name>  # single test
 
-# Lint/format (expected to pass per .agent rules)
+# Lint/format — clippy on embedded target; also run on host target to cover test modules
 cargo clippy
+cargo clippy --target $(rustc -vV | sed -n 's/^host: //p')
 cargo fmt
 ```
 
@@ -62,9 +63,9 @@ GitHub Issues are disabled on this repo; outstanding/completed work is tracked i
 
 ### Dual-target no_std design
 
-- The crate is `no_std` (`#![cfg_attr(not(test), no_std)]` in lib.rs). Gate RP2350-only code with `#[cfg(target_os = "none")]` and host-only code with `#[cfg(not(target_os = "none"))]`.
+- The crate lib.rs uses `#![cfg_attr(not(test), no_std)]` — `std` is available in host tests but not in embedded or library builds. Gate RP2350-only code with `#[cfg(target_os = "none")]` and host-only code with `#[cfg(not(target_os = "none"))]`.
 - Use `spin::Mutex`/`spin::RwLock` for shared state — never `std::sync` in `src/`.
-- Dynamic memory comes from the `alloc` crate (`Box`, `Vec`, `Arc`). The device heap is only 96KB (`HEAP_SIZE` in `src/pico.rs`), so be frugal; prefer static buffers for large fixed structures (e.g. `RAM_DISK`).
+- Dynamic memory comes from the `alloc` crate (`Box`, `Vec`, `Arc`). The device heap is only 96KB (`const HEAP_SIZE: usize = 96 * 1024` in `src/pico.rs`), so be frugal; prefer static buffers for large fixed structures (e.g. `RAM_DISK`). The README's 128KB heap figure is stale.
 - `defmt::info!`/`error!` for embedded logging (RTT); `DEFMT_LOG=debug` is set in `.cargo/config.toml`.
 
 ### Execution model
