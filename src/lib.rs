@@ -87,4 +87,21 @@ pub static RAM_DISK: RamDiskWrapper = RamDiskWrapper::new();
 pub static mut DISPLAY_BUFFER: [u16; SCREEN_DIM_X * SCREEN_DIM_Y] =
     [0x0000; SCREEN_DIM_X * SCREEN_DIM_Y];
 
-pub static mut AUDIO_CALLBACK: Option<fn(u8)> = None;
+use core::sync::atomic::{AtomicPtr, Ordering};
+/// Audio callback set once at boot. Stored as an AtomicPtr<fn(u8)> to avoid static mut.
+pub static AUDIO_CALLBACK: AtomicPtr<fn(u8)> = AtomicPtr::new(core::ptr::null_mut());
+
+/// Set the audio callback function pointer (called once at boot).
+pub fn set_audio_callback(cb: fn(u8)) {
+    AUDIO_CALLBACK.store(cb as *mut fn(u8), Ordering::Release);
+}
+
+/// Invoke the audio callback if it has been set.
+pub fn invoke_audio_callback(val: u8) {
+    let ptr = AUDIO_CALLBACK.load(Ordering::Acquire);
+    if !ptr.is_null() {
+        // SAFETY: the pointer was stored by `set_audio_callback` from a valid fn(u8).
+        let cb: fn(u8) = unsafe { *ptr };
+        cb(val);
+    }
+}

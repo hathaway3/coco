@@ -180,9 +180,7 @@ mod embedded {
             }
         }
 
-        unsafe {
-            coco::AUDIO_CALLBACK = Some(update_audio_pwm);
-        }
+        coco::set_audio_callback(update_audio_pwm);
 
         // Initialize ADC for Joystick analog axes
         let mut adc = hal::adc::Adc::new(pac.ADC, &mut pac.RESETS);

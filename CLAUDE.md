@@ -34,6 +34,10 @@ cargo fmt
 
 Tests live in `src/cpu_test.rs` and `src/vdg_test.rs` (`#[cfg(test)]` modules). The test harness (`src/test.rs`) runs 6809 assembly programs and checks `;! <ident> = <value>` TestCriterion assertion comments embedded in them (e.g. `;! a = #$55`).
 
+GitHub Issues are disabled on this repo; outstanding/completed work is tracked in `BACKLOG.md` instead. Check it for known issues before starting nontrivial work, and record what you did there when resolving a backlog item.
+
+**Gotcha:** `cargo clippy --fix` can silently detach a `#[cfg(...)]` attribute from an `impl` block when auto-fixing lints like `new_without_default` (seen on `src/input/usb.rs`), breaking the embedded build with a duplicate method. Always run `cargo build --release` (embedded target) after `clippy --fix`, not just `cargo clippy`.
+
 ## Agent Knowledge Base
 
 `.agent/` is the project's maintained knowledge base — read it before nontrivial work and **update it when making significant architectural changes**:
@@ -44,7 +48,15 @@ Tests live in `src/cpu_test.rs` and `src/vdg_test.rs` (`#[cfg(test)]` modules). 
 - `.agent/knowledge/6809-assembly.md` — built-in assembler directives and syntax
 - `.agent/knowledge/performance-optimizations.md` — fast memory path, lock-free polling design
 - `.agent/knowledge/drivewire-protocol.md` — DriveWire 4 protocol reference (fully supported via bridged ACIA)
+- `.agent/rules/rust-consistency.md` — coding standards for no_std, synchronization, and target gating
+- `.agent/rules/codebase-knowledge.md` — hardware gotchas and context-efficiency rules
 - `.agent/workflows/` — step-by-step guides for adding opcodes and debugging the emulator
+
+### Context-efficiency rules
+
+1. **Grep Before View**: Before reading large files (e.g., `instructions.rs`, `assembler.rs`), grep to find the specific opcode or function you need.
+2. **Use Outlines**: Always check module structure on new files over 200 lines before reading code.
+3. **Log Priority**: When debugging, read terminal output or system logs first rather than guessing state.
 
 ## Architecture
 
@@ -61,6 +73,15 @@ Tests live in `src/cpu_test.rs` and `src/vdg_test.rs` (`#[cfg(test)]` modules). 
 - The CPU uses a direct-execution model: instructions mutate `Core` state in place (no per-instruction `Outcome` copying or `Vec` allocations). `src/cpu.rs` holds `Core` and the execution cycle; `src/instructions.rs` (~1300 lines) implements all opcodes/addressing modes — grep for the specific opcode before reading it whole.
 - `src/runtime.rs` ties components together; `src/devmgr.rs` coordinates PIA/VDG/device updates; `src/memory.rs` is the bus.
 - Assembly pipeline: `src/parse.rs` → `src/assembler.rs` (the emulator assembles and runs `.asm` files directly) with `src/obj.rs`/`src/hex.rs` for object/S-record formats.
+
+### ROM loading
+
+ROMs are loaded at boot from an SD card over SPI0. The firmware looks for:
+- `COLOR.ROM` at `0xA000` (Color BASIC)
+- `EXTENDED.ROM` at `0x8000` (Extended Color BASIC)
+- `CART.ROM` at `0xC000` (cartridge)
+
+If no SD card is found, a placeholder test ROM is used.
 
 ### Hardware gotchas (details in `.agent/rules/codebase-knowledge.md`)
 

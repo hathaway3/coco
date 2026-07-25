@@ -161,12 +161,13 @@ pub mod TEPostByte {
         }
         None
     }
-    pub fn to_string(pb: u8) -> String {
-        let mut out = String::new();
-        out.push_str(nibble_str(pb >> 4));
-        out.push(',');
-        out.push_str(nibble_str(pb & 0x0f));
-        out
+    pub struct PostByte(pub u8);
+    impl core::fmt::Display for PostByte {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            f.write_str(nibble_str(self.0 >> 4))?;
+            f.write_str(",")?;
+            f.write_str(nibble_str(self.0 & 0x0f))
+        }
     }
     pub fn to_registers(pb: u8) -> Option<(registers::Name, registers::Name)> {
         if !is_valid(pb) {
@@ -209,7 +210,7 @@ pub mod PPPostByte {
             _ => None,
         }
     }
-    pub fn make(regs: &Vec<String>) -> Option<u8> {
+    pub fn make(regs: &[String]) -> Option<u8> {
         let mut pb = 0u8;
         for reg in regs {
             {
@@ -222,24 +223,26 @@ pub mod PPPostByte {
         }
         Some(pb)
     }
-    pub fn to_string(pb: u8, using_user_stack: bool) -> String {
-        let mut count = 0;
-        let mut out = String::new();
-        for bit in 0u8..8 {
-            let mask = 1 << bit;
-            if pb & mask != 0 {
-                count += 1;
-                if count > 1 {
-                    out.push(',');
-                }
-                if using_user_stack && bit == 6 {
-                    out.push('S');
-                } else {
-                    out.push_str(_STR[bit as usize]);
+    pub struct PostByte(pub u8, pub bool);
+    impl core::fmt::Display for PostByte {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            let mut count = 0u8;
+            for bit in 0u8..8 {
+                let mask = 1 << bit;
+                if self.0 & mask != 0 {
+                    count += 1;
+                    if count > 1 {
+                        f.write_str(",")?;
+                    }
+                    if self.1 && bit == 6 {
+                        f.write_str("S")?;
+                    } else {
+                        f.write_str(_STR[bit as usize])?;
+                    }
                 }
             }
+            Ok(())
         }
-        out
     }
 }
 

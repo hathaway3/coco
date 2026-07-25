@@ -136,9 +136,7 @@ fn test_render_sg4_semigraphic_block() {
         // Fill the first cell (byte 0) with the semigraphic block
         ram[0] = vram_byte;
         // Fill rest of first row with 0 (space/blank)
-        for i in 1..32 {
-            ram[i] = 0;
-        }
+        ram[1..32].fill(0);
     }
 
     let mut display = [0u16; SCREEN_DIM_X * SCREEN_DIM_Y];
@@ -176,9 +174,7 @@ fn test_render_sg4_text_char() {
     unsafe {
         let ram = &mut *RAM_DISK.as_mut_ptr();
         ram[0] = 0x41; // 'A'
-        for i in 1..32 {
-            ram[i] = 0x20; // spaces
-        }
+        ram[1..32].fill(0x20); // spaces
     }
 
     let mut display = [0u16; SCREEN_DIM_X * SCREEN_DIM_Y];
@@ -233,9 +229,7 @@ fn test_render_rg6_artifact_colors() {
         let ram = &mut *RAM_DISK.as_mut_ptr();
         ram[0] = 0b01101100;
         // clear the rest of the row
-        for i in 1..32 {
-            ram[i] = 0;
-        }
+        ram[1..32].fill(0);
     }
 
     let cyan = Color::Cyan.to_rgb555();

@@ -1,6 +1,3 @@
-use super::*;
-use alloc::collections::VecDeque;
-
 pub trait Pia {
     fn read(&mut self, reg_num: usize) -> u8;
     fn write(&mut self, reg_num: usize, data: u8);
@@ -191,7 +188,6 @@ struct Chip1 {
 pub struct PiaPair {
     chip0: Chip0,
     chip1: Chip1,
-    audio_buffer: VecDeque<f32>,
 }
 
 impl PiaPair {
@@ -199,7 +195,6 @@ impl PiaPair {
         Self {
             chip0: Chip0::default(),
             chip1: Chip1::default(),
-            audio_buffer: VecDeque::with_capacity(1024),
         }
     }
 
@@ -236,25 +231,13 @@ impl PiaPair {
                         && !self.chip1.dac_sel_b =>
                     {
                         let val = (self.chip1.ab[0].read_output() >> 2) << 2;
-                        unsafe {
-                            if let Some(cb) = crate::AUDIO_CALLBACK {
-                                cb(val);
-                            }
-                        }
-                        let fdata = ((self.chip1.ab[0].read_output() >> 2) as f32 - 31.0) / 32.0;
-                        self.push_audio_sample(fdata);
+                        crate::invoke_audio_callback(val);
                     }
                     2 => {
                         let bit = self.chip1.ab[1].read_output() & 2 == 2;
                         if bit != self.chip1.last_bit_sound {
                             let val = if bit { 255 } else { 0 };
-                            unsafe {
-                                if let Some(cb) = crate::AUDIO_CALLBACK {
-                                    cb(val);
-                                }
-                            }
-                            let fdata = if bit { 0.5 } else { -0.5 };
-                            self.push_audio_sample(fdata);
+                            crate::invoke_audio_callback(val);
                         }
                         self.chip1.last_bit_sound = bit;
                     }
@@ -264,17 +247,6 @@ impl PiaPair {
             }
             _ => (),
         }
-    }
-
-    fn push_audio_sample(&mut self, sample: f32) {
-        if self.audio_buffer.len() < 1024 {
-            self.audio_buffer.push_back(sample);
-        }
-    }
-
-    /// Retrieve and clear collected audio samples
-    pub fn get_audio_samples(&mut self) -> Vec<f32> {
-        self.audio_buffer.drain(..).collect()
     }
 
     // --- External Hardware Signals ---

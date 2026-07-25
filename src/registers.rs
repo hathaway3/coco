@@ -101,15 +101,6 @@ impl CCBits {
     pub fn is_set(&self, bit: CCBit) -> bool {
         CC_TABLE[bit as usize].mask & self.reg != 0
     }
-    pub fn get_set_bits(&self) -> Vec<CCBit> {
-        let mut v: Vec<CCBit> = Vec::new();
-        for t in &CC_TABLE {
-            if 0 != (self.reg & t.mask) {
-                v.push(t.bit)
-            }
-        }
-        v
-    }
     // condition code struct doubles as ALU
     pub fn add_u8(&mut self, a: u8, b: u8, with_carry: bool) -> u8 {
         let carry_in = u8::from(with_carry && self.is_set(CCBit::C));

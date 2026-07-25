@@ -319,11 +319,18 @@ impl Core {
                 if config::help_humans() {
                     inst.operand = Some(match inst.flavor.desc.pbt {
                         instructions::PBT::NA => format!("#${}", data),
-                        instructions::PBT::TransferExchange => TEPostByte::to_string(data.u8()),
-                        instructions::PBT::PushPull => PPPostByte::to_string(
-                            data.u8(),
-                            inst.flavor.desc.reg == registers::Name::U,
-                        ),
+                        instructions::PBT::TransferExchange => {
+                            format!("{}", TEPostByte::PostByte(data.u8()))
+                        }
+                        instructions::PBT::PushPull => {
+                            format!(
+                                "{}",
+                                PPPostByte::PostByte(
+                                    data.u8(),
+                                    inst.flavor.desc.reg == registers::Name::U,
+                                )
+                            )
+                        }
                     });
                 }
             }
