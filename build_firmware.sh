@@ -20,12 +20,12 @@ echo "Converting to UF2..."
 ELF_PATH="target/thumbv8m.main-none-eabihf/release/coco"
 
 if [ -f "$ELF_PATH" ]; then
-    # elf2uf2-rs might define 'elf2uf2-rs' binary or 'elf2uf2'
-    if command -v elf2uf2-rs &> /dev/null; then
-        elf2uf2-rs "$ELF_PATH" "coco.uf2"
-    else 
-        echo "Warning: elf2uf2-rs not found in PATH. Trying cargo run wrapper?"
-        echo "Please ensure cargo bin is in PATH."
+    if command -v picotool &> /dev/null; then
+        picotool uf2 convert "$ELF_PATH" -t elf "coco.uf2" --family rp2350-arm-s
+    else
+        echo "Error: picotool not found in PATH."
+        echo "RP2350 (Pico 2) requires picotool for UF2 conversion (--family rp2350-arm-s); elf2uf2-rs only emits RP2040 UF2s."
+        echo "Install picotool (e.g., 'brew install picotool' on macOS) and re-run."
         exit 1
     fi
     echo "Success! coco.uf2 created."

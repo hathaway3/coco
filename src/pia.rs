@@ -270,16 +270,19 @@ impl PiaPair {
     }
 
     pub fn hsync_irq(&mut self) -> bool {
+        self.chip0.ab[0].set_c1(false);
         self.chip0.ab[0].set_c1(true);
         self.chip0.ab[0].consume_interrupt()
     }
 
     pub fn vsync_irq(&mut self) -> bool {
+        self.chip0.ab[1].set_c1(false);
         self.chip0.ab[1].set_c1(true);
         self.chip0.ab[1].consume_interrupt()
     }
 
     pub fn cart_firq(&mut self) -> bool {
+        self.chip1.ab[1].set_c1(false);
         self.chip1.ab[1].set_c1(true);
         self.chip1.ab[1].consume_interrupt()
     }

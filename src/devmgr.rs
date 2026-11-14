@@ -29,7 +29,7 @@ impl DeviceManager {
         let vdg = Arc::new(Mutex::new(Vdg::with_vram_offset(vram_offset)));
         let pia = Arc::new(Mutex::new(crate::pia::PiaPair::new()));
         DeviceManager {
-            display: unsafe { &mut *core::ptr::addr_of_mut!(DISPLAY_BUFFER) },
+            display: unsafe { &mut (*core::ptr::addr_of_mut!(DISPLAY_BUFFER)).0 },
             sam: Arc::new(Mutex::new(Sam::new())),
             vdg,
             pia,

@@ -100,6 +100,8 @@ impl Core {
             if config::help_humans() {
                 self.post_instruction_debug_check(temp_pc, &outcome);
             }
+        } else {
+            self.clock_cycles += 1;
         }
 
         if self.clock_cycles - self.hsync_prev >= HSYNC_PERIOD_CYCLES {
@@ -121,8 +123,8 @@ impl Core {
                     if self.hsync_enabled {
                         irq = pia.hsync_irq();
                     }
-                    if vsync_elapsed && self.vsync_enabled {
-                        irq = irq || pia.vsync_irq();
+                    if vsync_elapsed && self.vsync_enabled && pia.vsync_irq() {
+                        irq = true;
                     }
                 }
                 if irq {

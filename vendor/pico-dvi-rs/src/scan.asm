@@ -21,7 +21,7 @@ tmds_scan:
     bx r4
 
 // Hot loops are in .scratch_x to reduce RAM contention.
-.section .scratch_x
+.section .scratch_x, "ax", %progbits
 
 .global tmds_scan_stop
 .type tmds_scan_stop,%function
@@ -281,7 +281,7 @@ video_scan:
     bx r4
 
 // Hot loops are in .scratch_x to reduce RAM contention.
-.section .scratch_x
+.section .scratch_x, "ax", %progbits
 
 .global video_scan_stop
 .type video_scan_stop,%function

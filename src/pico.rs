@@ -8,6 +8,7 @@ mod embedded {
 
     // Embedded-specific imports
     // Import dependencies
+    use core::arch::global_asm;
     use core::mem::MaybeUninit;
     use core::ptr::addr_of_mut;
     use defmt_rtt as _;
@@ -18,6 +19,16 @@ mod embedded {
     use hal::pac;
     use panic_probe as _;
     use rp235x_hal as hal;
+
+    global_asm! {
+        include_str!("../vendor/pico-dvi-rs/src/pre_init.asm"),
+        options(raw)
+    }
+
+    /// Tell the RP2350 Boot ROM about our application (must reside in .start_block within first 4KB of flash)
+    #[link_section = ".start_block"]
+    #[used]
+    pub static IMAGE_DEF: hal::block::ImageDef = hal::block::ImageDef::secure_exe();
 
     // Import pico-dvi-rs library
     use pico_dvi_rs::dvi; // Module for setup functions
@@ -175,8 +186,10 @@ mod embedded {
 
         fn update_audio_pwm(val: u8) {
             unsafe {
-                let cc_reg = 0x4005000c as *mut u32;
-                core::ptr::write_volatile(cc_reg, val as u32);
+                (*hal::pac::PWM::ptr())
+                    .ch(0)
+                    .cc()
+                    .write(|w| w.a().bits(val as u16));
             }
         }
 
@@ -249,8 +262,14 @@ mod embedded {
         let (mut pio0, sm0, _, _, _) = pac.PIO0.split(&mut pac.RESETS);
 
         // Configure PS/2 Pins (GPIO 28 = Data, GPIO 29 = Clock)
-        let ps2_data = pins.gpio28.into_function::<hal::gpio::FunctionPio0>();
-        let ps2_clk = pins.gpio29.into_function::<hal::gpio::FunctionPio0>();
+        let ps2_data = pins
+            .gpio28
+            .into_pull_up_input()
+            .into_function::<hal::gpio::FunctionPio0>();
+        let ps2_clk = pins
+            .gpio29
+            .into_pull_up_input()
+            .into_function::<hal::gpio::FunctionPio0>();
 
         // Initialize PS/2 Keyboard Driver
         let mut ps2_kb = Ps2Keyboard::new(&mut pio0, sm0, ps2_data.id().num, ps2_clk.id().num);
@@ -403,7 +422,7 @@ mod embedded {
             core.reset().unwrap();
         } else {
             defmt::info!("No boot ROM loaded. Booting with placeholder test ROM...");
-            let dummy_rom = [0x12, 0x12, 0x12, 0xFE];
+            let dummy_rom = [0x12, 0x12, 0x20, 0xFE];
             core.load_bytes(&dummy_rom, 0xA000).unwrap();
             core.force_reset_vector(0xA000).unwrap();
             core.reset().unwrap();

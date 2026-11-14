@@ -61,7 +61,7 @@ impl<P: PIOExt, SM: StateMachineIndex> Ps2Keyboard<P, SM> {
 
         Self {
             rx,
-            shift_reg: 0,
+            shift_reg: 0xFFFF,
             break_code: false,
         }
     }
